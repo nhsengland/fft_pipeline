@@ -1,0 +1,6 @@
+__pycache__/
+.coverage
+inputs/raw_data_files/
+logfiles
+mock_files
+outputs
