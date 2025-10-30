@@ -8,17 +8,17 @@ version = "0.1.0"
 description = "FFT Response Processing ETL Pipeline"
 requires-python = ">=3.12"
 dependencies = [
-    "pandas",                 # For data manipulation
-    "openpyxl",               # For Excel file handling
-    "pytest",                 # For testing
-    "pytest-cov",             # For test coverage reporting
-    "hypothesis>=6.147.0",    # For property-based testing
+    "pandas>=2.3.3",                 # For data manipulation
+    "openpyxl>=3.1.5",               # For Excel file handling
+    "pytest>=9.0.1",                 # For testing
+    "pytest-cov>=7.0.0",             # For test coverage reporting
+    "hypothesis>=6.147.0",           # For property-based testing
 ]
 
 [project.optional-dependencies]
 dev = [
-    "ruff",                   # Linter / Formatter
-    "ty",                     # Type checker
+    "ruff>=0.14.5",                   # Linter / Formatter
+    "ty>=0.0.1a26",                     # Type checker
 ]
 
 # Ruff configuration

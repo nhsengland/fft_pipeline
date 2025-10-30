@@ -89,7 +89,7 @@ uv run pytest --cov=src --cov-report=term-missing
 ```
 
 ### Troubleshooting
-If any errors arise from running the pipeline, access the logfiles folder and review messages – (logfiles\inpatient_fft).
+If any errors arise from running the pipeline, access the logfiles folder and review messages – (logfiles/inpatient_fft).
 The folder contains datetime suffixed logfiles with the most recent run datetime at the bottom.
 Working through the most recent logfile in each subfolder, it will be easy to track at which stage and what type of error caused the pipeline failure highlighting what needs to be checked and fixed. Where an unplanned anomaly creates the fault, tests and function updates should be added to the code to ensure this doesn't generate the same issue in the future. A full run of all tests (doctests and pytest) must be run to ensure new code doesn't have a negative impact on existing code/modules. All changes must be completed on a new branch and pull request submitted detailing changes to ensure version control and change log history.
 
