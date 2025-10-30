@@ -511,6 +511,7 @@ def map_fft_period(periodname, yearnumber):
     return (fft_period_abbrev, fft_period_filename, fft_period_datetime)
 
 
+
 def remove_columns(df, columns_to_remove):
     """
     Function to remove columns not required from the DataFrame including helper columns added during suppression processing.
@@ -618,6 +619,7 @@ def sum_grouped_response_fields(df, columns_to_group_by):
 
     # Group by specified columns and apply appropriate aggregation for each column type
     return df.groupby(columns_to_group_by, as_index=False).agg(agg_dict)
+
 
 
 def create_data_totals(df, current_fft_period, total_column_name, columns_to_sum):
