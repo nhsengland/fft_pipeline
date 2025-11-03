@@ -111,6 +111,11 @@ def main():
         # - Removes "SUM" suffix from response column names
         current_org_df = standardise_fft_column_names(current_org_df)
 
+        # Remove Title column immediately after loading to prevent "SIGNED-OFF TO DH" values appearing in the output
+        if "Title" in current_org_df.columns:
+            current_org_df = remove_columns(current_org_df, ["Title"])
+            logging.info("Removed 'Title' column at source to prevent SIGNED-OFF TO DH values in output")
+
         # Validate Yearnumber (7 chars), Org code (3 or 5 chars) and STP Code (3 chars) fields all contain values of correct length
         current_org_df = validate_column_length(current_org_df, ["Yearnumber"], [7])
         current_org_df = validate_column_length(current_org_df, ["Org code"], [3, 5])
@@ -246,6 +251,12 @@ def main():
         current_total_df = sum_grouped_response_fields(
             current_total_df, ["Submitter Type"]
         )
+
+        # Explicitly remove Title column to prevent concatenation issues in output
+        if "Title" in current_total_df.columns:
+            current_total_df = remove_columns(current_total_df, ["Title"])
+            logging.info("Removed 'Title' column to prevent concatenation issues in output")
+
         logging.info("NHS/IS1 aggregated current months Total Inpatient DataFrame:")
         logging.info(current_total_df.head())
 
@@ -326,7 +337,7 @@ def main():
             "Poor",
             "Very Poor",
             "Dont Know",
-            "Title",              # Adding the missing column
+            # "Title" removed to prevent concatenation issues
         ]
         # Add debugging to see actual columns before reordering
         logging.info(f"Columns in DataFrame before reordering: {list(current_total_df.columns)}")
@@ -412,6 +423,12 @@ def main():
 
         # Group by the specified columns and sum the numeric columns for NHS/IS1 aggregation
         current_sum_df = sum_grouped_response_fields(current_sum_df, ["Submitter Type"])
+
+        # Explicitly remove Title column to prevent concatenation issues in output
+        if "Title" in current_sum_df.columns:
+            current_sum_df = remove_columns(current_sum_df, ["Title"])
+            logging.info("Removed 'Title' column to prevent concatenation issues in output")
+
         logging.info("NHS/IS1 aggregated current months summary Inpatient DataFrame:")
         logging.info(current_sum_df.head())
 
@@ -767,6 +784,12 @@ def main():
         current_icb_df = sum_grouped_response_fields(
             current_icb_df, ["ICB Code", "ICB Name"]
         )
+
+        # Explicitly remove Title column to prevent concatenation issues in output
+        if "Title" in current_icb_df.columns:
+            current_icb_df = remove_columns(current_icb_df, ["Title"])
+            logging.info("Removed 'Title' column to prevent concatenation issues in output")
+
         logging.info("Aggregated current months ICB Level Inpatient DataFrame:")
         logging.info(current_icb_df.head())
 
@@ -955,6 +978,12 @@ def main():
 
         # Standardise column names
         current_mode_df = standardise_fft_column_names(current_mode_df)
+
+        # Remove Title column immediately after loading to prevent "SIGNED-OFF TO DH" values appearing in the output
+        if "Title" in current_mode_df.columns:
+            current_mode_df = remove_columns(current_mode_df, ["Title"])
+            logging.info("Removed 'Title' column from Collection Mode data at source")
+
         logging.info(
             "Most recent months Collection Mode Inpatient DataFrame after import:"
         )
@@ -993,6 +1022,12 @@ def main():
         current_org_df = join_dataframes(
             current_org_df, current_mode_df, "Trust Code", "left", "one_to_one"
         )
+
+        # Explicitly remove Title column if it reappears after join
+        if "Title" in current_org_df.columns:
+            current_org_df = remove_columns(current_org_df, ["Title"])
+            logging.info("Removed 'Title' column after join to prevent concatenation issues in output")
+
         logging.info(
             "Current months Trust Level Inpatient DataFrame with Collection Mode columns joined:"
         )
@@ -1024,6 +1059,12 @@ def main():
         current_mode_totals_df = sum_grouped_response_fields(
             current_mode_totals_df, ["Submitter Type"]
         )
+
+        # Explicitly remove Title column to prevent concatenation issues in output
+        if "Title" in current_mode_totals_df.columns:
+            current_mode_totals_df = remove_columns(current_mode_totals_df, ["Title"])
+            logging.info("Removed 'Title' column to prevent concatenation issues in output")
+
         logging.info(
             "NHS/IS1 aggregated current months Total mode values Inpatient DataFrame:"
         )
@@ -1104,6 +1145,12 @@ def main():
 
         # Standardise column names
         current_site_df = standardise_fft_column_names(current_site_df)
+
+        # Remove Title column immediately after loading to prevent "SIGNED-OFF TO DH" values appearing in the output
+        if "Title" in current_site_df.columns:
+            current_site_df = remove_columns(current_site_df, ["Title"])
+            logging.info("Removed 'Title' column from Site Level data at source")
+
         logging.info("Most recent months Site Level Inpatient DataFrame after import:")
         logging.info(current_site_df.head())
 
@@ -1248,6 +1295,12 @@ def main():
 
         # Standardise column names
         current_ward_df = standardise_fft_column_names(current_ward_df)
+
+        # Remove Title column immediately after loading to prevent "SIGNED-OFF TO DH" values appearing in the output
+        if "Title" in current_ward_df.columns:
+            current_ward_df = remove_columns(current_ward_df, ["Title"])
+            logging.info("Removed 'Title' column from Ward Level data at source")
+
         logging.info("Most recent months Ward Level Inpatient DataFrame after import:")
         logging.info(current_ward_df.head())
 
@@ -1605,6 +1658,11 @@ def main():
         ]
         # Reorder columns of the Org Level DataFrame according to stakeholder requirements for the final Outputs
         current_org_df = reorder_columns(current_org_df, org_output_column_order)
+
+        # Explicitly remove Title column to prevent concatenation issues in output
+        if "Title" in current_org_df.columns:
+            current_org_df = remove_columns(current_org_df, ["Title"])
+            logging.info("Removed 'Title' column from current_org_df to prevent concatenation issues in output")
 
         # Convert numeric fields that may contain missing/null values to object type to enable filling with "NA" without raising Error warning
         fields_to_convert_to_object_type = [
