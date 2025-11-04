@@ -2035,8 +2035,21 @@ def main():
     except Exception as e:
         logging.error("An error occurred in main():", exc_info=e)
         print(f"Error: {e}")
+        return False
+
+    logging.info("============================================================")
+    logging.info("FFT Inpatient Pipeline completed successfully!")
+    logging.info(f"Output file generated: {output_file_path}/FFT-inpatient-data-{current_fft_period}.xlsm")
+    logging.info("============================================================")
+
+    print("\n✅ FFT Inpatient Pipeline completed successfully!")
+    print(f"Output file generated: {output_file_path}/FFT-inpatient-data-{current_fft_period}.xlsm")
+
     logging.info("Logging script finished.")
+    return True
 
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    exit_code = 0 if success else 1
+    exit(exit_code)
