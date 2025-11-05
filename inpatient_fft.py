@@ -1169,6 +1169,7 @@ def main():
             "Org name": "Trust Name",
             "STP Code": "ICB Code",
             "STP Name": "ICB Name",
+            "Site Name MAX": "Site Name",
             "1 Very Good": "Very Good",
             "2 Good": "Good",
             "3 Neither good nor poor": "Neither Good nor Poor",
