@@ -62,7 +62,7 @@ The pipeline was built in python using the following tools/libraries:
 
 ### Testing
 
-The codebase includes two types of tests:
+The codebase includes three complementary testing approaches:
 
 #### Doctests
 
@@ -74,15 +74,27 @@ Run the doctests with:
 uv run python -m doctest src/etl_functions.py -v
 ```
 
-#### Unit Tests
+#### Property-Based Testing
 
-For functions that require complex fixtures or mocking, traditional pytest unit tests are available:
+Property-based tests use the Hypothesis framework to generate diverse inputs automatically and verify that functions maintain key invariants regardless of input values. This helps discover edge cases and ensure robustness.
+
+Run property-based tests:
 
 ```bash
-uv run pytest
+uv run pytest tests/test_property_based.py -v
 ```
 
-or with coverage:
+#### Integration Tests
+
+For functions that work with files or require real-world data, simplified integration tests are available. These tests use real test data from `tests/test_data/` and verify that functions behave correctly with actual input.
+
+Run integration tests:
+
+```bash
+uv run pytest tests/test_etl_minimal.py -v
+```
+
+Run all tests with coverage:
 
 ```bash
 uv run pytest --cov=src --cov-report=term-missing
