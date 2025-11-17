@@ -53,9 +53,15 @@ from src.etl_functions import (
     write_dataframes_to_sheets,
 )
 
+# Ensure necessary directories exist
+log_dir = Path("logfiles") / "inpatient_fft"
+log_dir.mkdir(parents=True, exist_ok=True)
+
+# Ensure outputs directory exists
+Path("outputs").mkdir(exist_ok=True)
+
 # Format timestamp to avoid invalid characters in the filename
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_dir = Path("logfiles") / "inpatient_fft"
 log_filename = str(log_dir / f"inpatient_fft_{timestamp}.log")
 logging.basicConfig(
     filename=log_filename,
