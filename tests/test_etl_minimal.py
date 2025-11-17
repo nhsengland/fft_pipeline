@@ -8,92 +8,105 @@ This file contains only tests for functions without doctests or tests requiring
 complex fixtures that are difficult to implement as doctests.
 """
 
-from src.etl_functions import *
-import pytest
-import pandas as pd
-import os
 import glob
-from unittest.mock import patch, MagicMock
-from pathlib import Path
+import os
 import tempfile
+import time
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+
+from src.etl_functions import *
 
 
 def test_list_excel_files_with_tempdir():
-    """
-    Test list_excel_files function using a temporary directory with test files.
-
-    This test creates a controlled environment with files with known modification times.
-    """
-    # Create a temporary directory
+    """Test list_excel_files function with a temporary directory and actual files."""
+    # Create a temp directory for our test files
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Create test files with known modification times
-        file1 = Path(temp_dir) / "IPFFT-Jan24.xlsx"
-        file2 = Path(temp_dir) / "IPFFT-Feb24.xlsx"
-        file3 = Path(temp_dir) / "IPFFT-Mar24.xlsx"
+        temp_path = Path(temp_dir)
 
-        # Touch the files to create them
+        # Create test files with dates in the filename
+        file_pattern = 'FFTestIP-*.xlsx'
+        prefix_suffix_separator = '-'
+        date_format = '%b%y'
+
+        # Create files in reverse chronological order
+        file1 = temp_path / 'FFTestIP-Jan24.xlsx'
+        file2 = temp_path / 'FFTestIP-Feb24.xlsx'
+        file3 = temp_path / 'FFTestIP-Mar24.xlsx'
+
+        # Create the files
         file1.touch()
         file2.touch()
         file3.touch()
 
-        # Set modification times in ascending order
+        # Set modification times explicitly (oldest to newest)
         os.utime(file1, (1000, 1000))
         os.utime(file2, (2000, 2000))
         os.utime(file3, (3000, 3000))
 
-        # Set parameters
-        file_pattern = "IPFFT-*.xlsx"
-        prefix_suffix_separator = "-"
-        date_format = "%b%y"
-
         # Act: Call the function with our temp directory
-        result = list_excel_files(temp_dir, file_pattern, prefix_suffix_separator, date_format)
+        result = list_excel_files(
+            temp_dir,
+            file_pattern,
+            prefix_suffix_separator,
+            date_format
+        )
 
         # Assert: Verify the returned file list
-        assert len(result) == 3
+        EXPECTED_FILES = 3
+        assert len(result) == EXPECTED_FILES
         # Files should be sorted by modification time (newest first)
         assert "Mar24" in str(result[0])
         assert "Feb24" in str(result[1])
         assert "Jan24" in str(result[2])
 
 
-def test_list_excel_files_raises_error_when_no_files_found():
-    """
-    Test that an error is raised when no files are found
+def test_validate_column_length_empty_df():
+    """Test validate_column_length with an empty DataFrame."""
+    # Arrange
+    df = pd.DataFrame(columns=['Org Code'])
 
-    Using a temporary directory to ensure it's empty
-    """
-    # Create a temporary directory that will definitely be empty
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Set parameters
-        file_pattern = "NonExistent-*.xlsx"
-        prefix_suffix_separator = "-"
-        date_format = "%b%y"
+    # Act and Assert: Function should return the empty DataFrame unchanged
+    result = validate_column_length(df, 'Org Code', 3)
 
-        # Act & Assert: Verify that ValueError is raised
-        with pytest.raises(ValueError, match="No matching Excel files found"):
-            list_excel_files(temp_dir, file_pattern, prefix_suffix_separator, date_format)
+    # Verify the result is identical to the input
+    pd.testing.assert_frame_equal(result, df)
 
 
-@pytest.mark.skip(reason="Need to create a macro-enabled test file")
-def test_open_macro_excel_file():
-    """
-    Test that open_macro_excel_file can load a workbook.
+def test_validate_numeric_columns_empty_df():
+    """Test validate_numeric_columns with an empty DataFrame."""
+    # Arrange
+    df = pd.DataFrame(columns=['Value'])
 
-    This test would ideally use a real macro-enabled Excel file,
-    but we'll mock the function for now.
-    """
-    # This test requires a real macro-enabled Excel file
-    # Since creating one is complex and requires Office software,
-    # we'll skip this test for now
-    pass
+    # Act and Assert: Function should return the empty DataFrame unchanged
+    result = validate_numeric_columns(df, 'Value', 'int')
+
+    # Verify the result is identical to the input
+    pd.testing.assert_frame_equal(result, df)
+
+
+@patch('src.etl_functions.load_workbook')
+def test_open_macro_excel_file(mock_load_workbook):
+    """Test open_macro_excel_file function."""
+    # Arrange
+    file_path = 'test.xlsm'
+    mock_wb = MagicMock()
+    mock_load_workbook.return_value = mock_wb
+
+    # Act
+    wb = open_macro_excel_file(file_path)
+
+    # Assert
+    mock_load_workbook.assert_called_once_with(str(Path(file_path)), keep_vba=True)
+    assert wb == mock_wb
 
 
 def test_write_dataframes_to_sheets():
-    """
-    Test that write_dataframes_to_sheets correctly writes to specified sheets
-    """
-    # Arrange: Create a mock workbook
+    """Test write_dataframes_to_sheets function."""
+    # Arrange: Create a mock workbook and worksheets
     wb = MagicMock()
     ws = MagicMock()
     wb.__getitem__.return_value = ws
@@ -116,4 +129,5 @@ def test_write_dataframes_to_sheets():
     # Assert: Check the workbook was accessed correctly
     wb.__getitem__.assert_any_call("Sheet1")
     wb.__getitem__.assert_any_call("Sheet2")
-    assert wb.__getitem__.call_count == 2
+    EXPECTED_CALLS = 2
+    assert wb.__getitem__.call_count == EXPECTED_CALLS

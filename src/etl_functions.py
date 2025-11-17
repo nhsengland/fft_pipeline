@@ -1,10 +1,11 @@
-import os  # operating system interaction
 import glob  # find pathnames matching specified pattern
-import pandas as pd
-import numpy as np
 import logging
+import os  # operating system interaction
 from datetime import datetime
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
 from openpyxl import (
     Workbook,
     load_workbook,
@@ -12,10 +13,10 @@ from openpyxl import (
 
 # from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.styles import (
-    PatternFill,
     Alignment,
-    NamedStyle,
     Font,
+    NamedStyle,
+    PatternFill,
 )  # enable alterations to opened Excel file
 
 
@@ -103,7 +104,8 @@ def load_excel_sheet(file_path, sheet_name):
     >>> from unittest.mock import patch
     >>> # Mock pd.read_excel to return a simple DataFrame
     >>> with patch('pandas.read_excel') as mock_read_excel:
-    ...     mock_read_excel.return_value = pd.DataFrame({'Site Code': ['ABC01', 'DEF02'], '1 Very Good': [100, 50]})
+    ...     df_data = {'Site Code': ['ABC01', 'DEF02'], '1 Very Good': [100, 50]}
+    ...     mock_read_excel.return_value = pd.DataFrame(df_data)
     ...     df = load_excel_sheet('mock_file.xlsx', 'Parent_Self_Trusts_Site_Lev')
     ...     # Check that the function returns the mocked DataFrame
     ...     list(df.columns) == ['Site Code', '1 Very Good']
@@ -138,7 +140,9 @@ def load_excel_sheet(file_path, sheet_name):
         if df.shape[0] > 1 and isinstance(df.iloc[1, 0], str):
             # If second row appears to contain actual column headers
             # (checking if it has values like "Yearnumber")
-            if "year" in str(df.iloc[1, 0]).lower() or "period" in str(df.iloc[1, 1]).lower():
+            first_cell = str(df.iloc[1, 0]).lower()
+            second_cell = str(df.iloc[1, 1]).lower()
+            if "year" in first_cell or "period" in second_cell:
                 # Use second row as header
                 new_headers = df.iloc[1].values
                 df = df[2:].copy()  # Skip first two rows (titles and headers)
@@ -166,17 +170,21 @@ def load_excel_sheet(file_path, sheet_name):
                         denormalised_name = "Parent & Self Trusts - Collecti"
                     else:
                         # Generic conversion as fallback
-                        denormalised_name = sheet_name.replace("_Self_", " & Self ").replace("_", " - ")
+                        denormalised_name = (sheet_name.replace("_Self_", " & Self ")
+                                                .replace("_", " - "))
                 else:
                     # Generic conversion as fallback
-                    denormalised_name = sheet_name.replace("_Self_", " & Self ").replace("_", " - ")
+                    denormalised_name = (sheet_name.replace("_Self_", " & Self ")
+                                            .replace("_", " - "))
 
                 df = pd.read_excel(file_path, sheet_name=denormalised_name)
                 return process_df(df)
             # If the name has spaces/&/-, try normalising it
             else:
                 # Convert from original to normalised format
-                normalised_name = sheet_name.replace(" & ", "_Self_").replace(" - ", "_").replace(" ", "_")
+                normalised_name = (sheet_name.replace(" & ", "_Self_")
+                                     .replace(" - ", "_")
+                                     .replace(" ", "_"))
                 df = pd.read_excel(file_path, sheet_name=normalised_name)
                 return process_df(df)
         except ValueError as e:
@@ -184,7 +192,8 @@ def load_excel_sheet(file_path, sheet_name):
             try:
                 available_sheets = pd.ExcelFile(file_path).sheet_names
                 sheet_list = ", ".join(f"'{s}'" for s in available_sheets)
-                raise ValueError(f"Sheet '{sheet_name}' not found in the file. Available sheets: {sheet_list}") from e
+                error_msg = f"Sheet '{sheet_name}' not found in the file. Available sheets: {sheet_list}"
+                raise ValueError(error_msg) from e
             except Exception:
                 raise ValueError(f"Sheet '{sheet_name}' not found in the file.") from e
 
@@ -197,7 +206,7 @@ def validate_column_length(df, columns, lengths):
     Parameters:
     df: DataFrame containing columns to check
     columns: Name of the column(s) to check (string or list of strings)
-    lengths: int or list of ints, allowed lengths for the column values
+    lengths: int or list of ints, allowed character lengths for the column values
 
     Returns:
     - df: The original DataFrame if validation passes
@@ -257,15 +266,15 @@ def validate_column_length(df, columns, lengths):
         for idx, value in df[column].items():
             if len(str(value)) not in lengths:
                 raise ValueError(
-                    f"Row {idx} in column '{column}' contains a value with invalid length."
+                    f"Row {idx} in column '{column}' has invalid length."
                 )
     return df
 
 
 def validate_numeric_columns(df, columns, expected_type):
     """
-    Function to validate that all values in the specified column(s) are either integers or floats,
-    depending on the expected type.
+    Validate that values in specified column(s) are either integers or floats,
+    based on the expected type.
 
     Parameters:
     df: DataFrame containing data to validate
@@ -288,7 +297,8 @@ def validate_numeric_columns(df, columns, expected_type):
     True
 
     >>> # Test valid multiple columns
-    >>> df = pd.DataFrame({'Prop_Pos': [98.5, 95.0, 96.7], 'Prop_Neg': [12.5, 15.0, 13.7]})
+    >>> data = {'Prop_Pos': [98.5, 95.0, 96.7], 'Prop_Neg': [12.5, 15.0, 13.7]}
+    >>> df = pd.DataFrame(data)
     >>> validate_numeric_columns(df, ['Prop_Pos', 'Prop_Neg'], 'float') is df
     True
 
@@ -354,7 +364,7 @@ def validate_numeric_columns(df, columns, expected_type):
 
 def get_cell_content_as_string(source_dataframe, source_row, source_col):
     """
-    Function to combine a specified string with the contents of a DataFrame cell to enable dynamic update.
+    Combine a string with the contents of a DataFrame cell for dynamic updates.
 
     Parameters:
     source_dataframe: The name of the DataFrame that contains the source text.
@@ -380,8 +390,8 @@ def get_cell_content_as_string(source_dataframe, source_row, source_col):
 
 def map_fft_period(periodname, yearnumber):
     """
-    Function to generate the FFT_Period based on mapping 'Periodname' to the correct year based on 'Yearnumber'.
-    Used for formatting healthcare data reporting periods in Friends and Family Test (FFT) datasets.
+    Generate the FFT_Period by mapping 'Periodname' to the correct year.
+    Used for formatting reporting periods in Friends and Family Test datasets.
 
     Parameters:
     periodname: The period name (e.g., 'JANUARY', 'FEBRUARY').
@@ -571,9 +581,11 @@ def replace_non_matching_values(df, column_name, target_value, replacement_value
 
 def sum_grouped_response_fields(df, columns_to_group_by):
     """
-    Function to aggregate data submitted at one level to data at a higher level e.g. aggregating Trust level data to ICB level data.
-    This allows Total Response, Total Eligible and Breakdown of Responses fields to be aggregated to the necessary level before new
-    calculations are carried out to generate Percentage Positive and Percentage Negative fields at the new level.
+    Function to aggregate data submitted at one level to data at a higher level 
+    e.g. aggregating Trust level data to ICB level data. This allows Total Response, 
+    Total Eligible and Breakdown of Responses fields to be aggregated to the necessary 
+    level before new calculations are carried out to generate Percentage Positive and 
+    Percentage Negative fields at the new level.
 
     Parameters:
     df: DataFrame requiring grouping and summing.
@@ -582,10 +594,6 @@ def sum_grouped_response_fields(df, columns_to_group_by):
     Returns:
     - df: with selected content aggregated by specified fields and all numerical fields summed.
 
-    Examples:
-    >>> # This function is used to group data by one or more columns
-    >>> # For example, it's used to aggregate Trust level data to ICB level
-    >>> # or to combine NHS and Independent Provider data
     """
     # Check and store any columns specified not present in the DataFrame and raise KeyError
     missing_columns = [col for col in columns_to_group_by if col not in df.columns]
@@ -614,8 +622,9 @@ def sum_grouped_response_fields(df, columns_to_group_by):
 
 def create_data_totals(df, current_fft_period, total_column_name, columns_to_sum):
     """
-    Function to create monthly data totals row from existing DataFrame. Totals will have a specified column set to 'Total',
-    'Period' will be the same as the current FFT Period, and all other specified columns will be the sum of the
+    Function to create monthly data totals row from existing DataFrame. 
+    Totals will have a specified column set to 'Total', 'Period' will be the same as 
+    the current FFT Period, and all other specified columns will be the sum of the
     corresponding columns.
 
     Parameters:
@@ -670,15 +679,17 @@ def create_percentage_field(
     df, percentage_column, sum_column_one, sum_column_two, total_columm
 ):
     """
-    Function to generate percentage positive and negative columns for survey results using percentage calculation
-    sum_columns / total * 100. Used for calculating metrics like percentage positive responses in FFT data.
+    Function to generate percentage positive and negative columns for survey results 
+    using percentage calculation sum_columns / total * 100. 
+    Used for calculating metrics like percentage positive responses in FFT data.
 
     Parameters:
     df: DataFrame with fields to calculate for addition of percentage columns.
     percentage_column: new column added containing results of percentage calculation.
     sum_column_one: first of two columns summed to establish percentage of total.
     sum_column_two: second of two columns summed to establish percentage of total.
-    total_columm: total response field used to establish the percentage the two other columns represent.
+    total_columm: total response field used to establish the percentage the two other 
+    columns represent.
 
     Returns:
     - df: with new percentage column added.
@@ -1320,14 +1331,13 @@ def sort_dataframe(df, df_fields, directions):
     if isinstance(directions, bool):
         # If directions is a single boolean, use it for all fields
         adjusted_directions = [directions] * len(available_fields)
+    # If directions is a list, filter it to match available fields
+    elif len(directions) == len(df_fields):
+        adjusted_directions = [directions[i] for i, field in enumerate(df_fields) if field in available_fields]
     else:
-        # If directions is a list, filter it to match available fields
-        if len(directions) == len(df_fields):
-            adjusted_directions = [directions[i] for i, field in enumerate(df_fields) if field in available_fields]
-        else:
-            # If directions length doesn't match df_fields, use True for all fields
-            adjusted_directions = [True] * len(available_fields)
-            logging.warning("Sort directions length does not match fields length. Using ascending (True) for all fields.")
+        # If directions length doesn't match df_fields, use True for all fields
+        adjusted_directions = [True] * len(available_fields)
+        logging.warning("Sort directions length does not match fields length. Using ascending (True) for all fields.")
 
     # Sort the DataFrame using the available fields and adjusted directions
     df = df.sort_values(by=available_fields, ascending=adjusted_directions, ignore_index=True)
@@ -2126,8 +2136,9 @@ def update_cell_with_formatting(
 
 def create_percentage_style(workbook):
     """
-    Function to create a percentage style with 0 decimal places and add it to the workbook. NameStyles can
-    only be defined and registered to a workbook once, so definition needs to be distinct from application.
+    Create a percentage style with 0 decimal places and add it to the workbook.
+    NameStyles can only be defined and registered to a workbook once, so definition needs
+    to be distinct from application.
 
     Parameters:
     workbook: The openpyxl workbook object.
@@ -2161,7 +2172,7 @@ def format_column_as_percentage(
     workbook, sheet_name, start_row, start_cols, percentage_style
 ):
     """
-    Function to format specified Excel sheet column(s) as percentages with 0 decimal places.
+    Format specified Excel sheet column(s) as percentages with 0 decimal places.
 
     Parameters:
     workbook: The workbook object where the sheet resides.
@@ -2179,7 +2190,7 @@ def format_column_as_percentage(
     else:
         raise ValueError(f"Sheet {sheet_name} does not exist in this workbook.")
 
-    # Apply formatting (percentage format with 0 decimal places) to specified columns starting from the specified row
+    # Apply percentage format to specified columns starting from specified row
     for start_col in start_cols:
         # Loop from the starting row to the last row
         for row in range(start_row, sheet.max_row + 1):
@@ -2190,14 +2201,14 @@ def format_column_as_percentage(
 
 def combine_text_and_dataframe_cells(input_text_or_cell_1, input_text_or_cell_2):
     """
-    Function to combine a specified string with the contents of a DataFrame cell to enable dynamic update.
+    Combine a string with the contents of a DataFrame cell for dynamic updates.
 
     Parameters:
     input_text_or_cell_1: First text string or variable with cell content.
     input_text_or_cell_2: Second text string or variable with cell content.
 
     Returns:
-    - combined_string: the text string and cell content combined into a string for further use.
+    - combined_string: combined string for further use.
     """
 
     # Combine the input text or cell content
@@ -2210,25 +2221,26 @@ def save_macro_excel_file(
     workbook,
     source_file_path,
     new_folder_path,
-    new=False,
-    prefix=None,
-    fft_period_suffix=None,
+    save_config=None,
 ):
     """
-    Save the workbook, either replacing the existing file or saving it as a new file with a specified name.
+    Save the workbook, either replacing the existing file or saving it as a new file.
 
     Parameters:
     workbook: The workbook object to be saved.
-    source_file_path: The path of the existing macro-enabled Excel file. Retain name used for loading in file.
-    new_folder_path: The folder path assigned for saving a new macro-enabled Excel file.
-    new: Boolean - If True, saves the file as a new file with a name generated by prefix and suffix.
-         If False, it saves to the original source file path.
-    prefix: Prefix for the name of the Excel file.
-    fft_period_suffix = the fft period for which the output is being saved e.g., current_fft_period
-
-    Returns:
-    - None: Excel file saved to specified file path.
+    source_file_path: The path of the existing macro-enabled Excel file.
+    new_folder_path: The folder path for saving a new macro-enabled Excel file.
+    save_config: Dict with configuration options:
+        - new: If True, saves as a new file with generated name (default: False)
+        - prefix: Prefix for the new Excel filename
+        - fft_period_suffix: The FFT period for the output file
     """
+    # Initialize defaults for save_config
+    if save_config is None:
+        save_config = {}
+    new = save_config.get('new', False)
+    prefix = save_config.get('prefix')
+    fft_period_suffix = save_config.get('fft_period_suffix')
     if new:
         # Construct the new file name
         new_file_name = f"{prefix}-{fft_period_suffix}.xlsm"
