@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fft_pipeline"
+version = "0.1.0"
+description = "FFT Response Processing ETL Pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas",                 # For data manipulation
+    "openpyxl",               # For Excel file handling
+    "pytest",                 # For testing
+    "pytest-cov",             # For test coverage reporting
+    "hypothesis>=6.147.0",    # For property-based testing
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",                   # Linter / Formatter
+    "ty",                     # Type checker
+]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 90
+target-version = "py313"
+exclude = [""]
+
+[tool.ruff.lint]
+# Simple rules: pylint + isort
+select = [
+    "E",                      # pycodestyle errors
+    "W",                      # pycodestyle warnings
+    "I",                      # isort (import sorting)
+    "PL",                     # pylint rules
+]
+exclude = [""]
+
+[tool.ty.src]
+exclude = ["tests"]
+
+[tool.ty.rules]
+invalid-argument-type = "warn"
+invalid-key = "warn"
+unresolved-reference = "warn"
+invalid-assignment = "warn"
+
+[tool.ruff.lint.isort]
+# isort configuration
+force-single-line = false
+combine-as-imports = true
+
+[tool.ruff.format]
+# Black-compatible formatting (default settings)
+quote-style = "double"
+exclude = ["*.ipynb"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --cov-report=term-missing -vv"
