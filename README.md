@@ -62,7 +62,7 @@ The pipeline was built in python using the following tools/libraries:
 
 ### Testing
 
-The codebase includes three complementary testing approaches:
+The codebase includes two types of tests:
 
 #### Doctests
 
@@ -74,27 +74,15 @@ Run the doctests with:
 uv run python -m doctest src/etl_functions.py -v
 ```
 
-#### Property-Based Testing
+#### Unit Tests
 
-Property-based tests use the Hypothesis framework to generate diverse inputs automatically and verify that functions maintain key invariants regardless of input values. This helps discover edge cases and ensure robustness.
-
-Run property-based tests:
+For functions that require complex fixtures or mocking, traditional pytest unit tests are available:
 
 ```bash
-uv run pytest tests/test_property_based.py -v
+uv run pytest
 ```
 
-#### Integration Tests
-
-For functions that work with files or require real-world data, simplified integration tests are available. These tests use real test data from `tests/test_data/` and verify that functions behave correctly with actual input.
-
-Run integration tests:
-
-```bash
-uv run pytest tests/test_etl_minimal.py -v
-```
-
-Run all tests with coverage:
+or with coverage:
 
 ```bash
 uv run pytest --cov=src --cov-report=term-missing
@@ -116,7 +104,7 @@ Contributions are what make the open source community such an amazing place to l
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-_See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidance._
+_See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for detailed guidance._
 
 
 ### License
@@ -128,6 +116,6 @@ _See [LICENSE](./LICENSE) for more information._
 
 The documentation is [© Crown copyright][copyright] and available under the terms of the [Open Government 3.0][ogl] licence.
 
-[mit]: LICENCE
+[mit]: ./LICENCE
 [copyright]: http://www.nationalarchives.gov.uk/information-management/re-using-public-sector-information/uk-government-licensing-framework/crown-copyright/
 [ogl]: http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/

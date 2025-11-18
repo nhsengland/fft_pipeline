@@ -1,8 +1,7 @@
-inputs/raw_data_files/
-logfiles
-mock_files
-inputs
-outputs
+logfiles/
+mock_files/
+inputs/
+outputs/
 rolling_total_file/
 fft_pipeline.log
 *.backup
@@ -229,3 +228,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude helper files directory
+.claude/
