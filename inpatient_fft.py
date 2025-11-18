@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -54,11 +55,11 @@ from src.etl_functions import (
 )
 
 # Ensure necessary directories exist
-log_dir = Path("logfiles") / "inpatient_fft"
+log_dir = Path("data") / "logfiles" / "inpatient_fft"
 log_dir.mkdir(parents=True, exist_ok=True)
 
 # Ensure outputs directory exists
-Path("outputs").mkdir(exist_ok=True)
+Path("data/outputs").mkdir(exist_ok=True)
 
 # Format timestamp to avoid invalid characters in the filename
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -77,7 +78,7 @@ def main():
         logging.info("Logging script started with verbose output.")
 
         # Generate list of relevant Excel files from specified folder to enable identification of current period
-        input_dir = Path("inputs") / "raw_data_files" / "inpatient"
+        input_dir = Path("data") / "inputs" / "raw_data" / "inpatient"
         logging.info(f"Looking for Excel files in: {input_dir}")
         sorted_files = list_excel_files(
             str(input_dir), "*[Ii]npatient*.xlsx", "_", "%b%y"
@@ -512,7 +513,7 @@ def main():
 
         # Import Monthly Rolling Totals for adding current months totals to, extracting previous months totals, and calculating cumulative values.
         monthly_rolling_totals = str(
-            Path("rolling_total_file") / "Monthly Rolling Totals.xlsx"
+            Path("data") / "rolling_totals" / "Monthly Rolling Totals.xlsx"
         )
         ip_rolling_df = load_excel_sheet(monthly_rolling_totals, "IP")
         logging.info("Monthly Rolling Totals file imported as a DataFrame:")
@@ -1818,7 +1819,7 @@ def main():
 
         # Open the Macro-Enabled Excel Source template file to workbook object
         template_file_path = str(
-            Path("inputs") / "template_files" / "FFT-inpatient-data-template.xlsm"
+            Path("data") / "inputs" / "templates" / "FFT-inpatient-data-template.xlsm"
         )
         Inpatient_Excel_Workbook = open_macro_excel_file(template_file_path)
         logging.info(
@@ -2024,7 +2025,7 @@ def main():
         logging.info("Note sheet heading updated with current month as suffix.")
 
         # save dataframes using template of Macro-Enabled Excel file with openpyxl
-        output_file_path = str(Path("outputs"))
+        output_file_path = str(Path("data") / "outputs")
         prefix_name = "FFT-inpatient-data"
         save_macro_excel_file(
             Inpatient_Excel_Workbook,
