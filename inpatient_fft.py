@@ -52,10 +52,13 @@ from src.etl_functions import (
     validate_numeric_columns,
     write_dataframes_to_sheets,
 )
+from pathlib import Path
 
 # Format timestamp to avoid invalid characters in the filename
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-log_filename = rf'logfiles\inpatient_fft\inpatient_fft_{timestamp}.log'
+log_dir = Path("data") / "logfiles" / "inpatient_fft"
+log_dir.mkdir(parents=True, exist_ok=True)  # Create the directory if it doesn't exist 
+log_filename = log_dir / f'inpatient_fft_{timestamp}.log'
 logging.basicConfig(filename=log_filename,
                     level=logging.DEBUG, # provides detailed info for diagnosing problems
                     format='%(asctime)s %(levelname)s %(message)s')
@@ -67,9 +70,9 @@ def main():
         logging.info('Logging script started.')
 
 
-    # Generate list of relevant Excel files to enable identification of current period
-        sorted_files = list_excel_files(r'inputs\raw_data_files\inpatient',
-                                        'FFTestIP-*.xlsx', '-', '%b%y')
+        # Generate list of relevant Excel files to enable identification of current period
+        sorted_files = list_excel_files(Path('data') / 'inputs' / 'raw_data_files' / 'inpatient',
+                                        "FFT_Inpatients_V1 *.xlsx", '-', '%b-%y')
         # Identify which file to import as current month
         current_month_file = sorted_files[0]
         # Identify which file to import as previous month
@@ -1025,7 +1028,7 @@ def main():
         logging.info(current_ward_df.head())
 
         # Open the Macro-Enabled Excel Source template file to workbook object
-        template_file_path = rf'inputs\template _files\FFT-inpatient-data-template.xlsm'
+        template_file_path = Path("data") / "inputs" / "templates" / "FFT-inpatient-data-template.xlsm"
         Inpatient_Excel_Workbook = open_macro_excel_file(template_file_path)
         logging.info("Macro-Enabled Excel IP Template opened as workbook object for populating.")
 
