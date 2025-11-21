@@ -6,19 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "fft_pipeline"
 version = "0.1.0"
 description = "FFT Response Processing ETL Pipeline"
-requires-python = ">=3.12"
+requires-python = ">3.12"
 dependencies = [
     "pandas",                 # For data manipulation
-    "openpyxl",               # For Excel file handling
-    "pytest",                 # For testing
-    "pytest-cov",             # For test coverage reporting
-    "hypothesis>=6.147.0",    # For property-based testing
+    "openpyxl"               # For Excel file handling
 ]
 
 [project.optional-dependencies]
 dev = [
     "ruff",                   # Linter / Formatter
-    "ty",                     # Type checker
+    "ty"                     # Type checker
 ]
 
 # Ruff configuration
@@ -37,15 +34,6 @@ select = [
 ]
 exclude = [""]
 
-[tool.ty.src]
-exclude = ["tests"]
-
-[tool.ty.rules]
-invalid-argument-type = "warn"
-invalid-key = "warn"
-unresolved-reference = "warn"
-invalid-assignment = "warn"
-
 [tool.ruff.lint.isort]
 # isort configuration
 force-single-line = false
@@ -54,7 +42,17 @@ combine-as-imports = true
 [tool.ruff.format]
 # Black-compatible formatting (default settings)
 quote-style = "double"
+indent-style = "space"
 exclude = ["*.ipynb"]
+
+[tool.ty.src]
+exclude = ["tests"]
+
+[tool.ty.rules]
+invalid-argument-type = "warn"
+invalid-key = "warn"
+unresolved-reference = "warn"
+invalid-assignment = "warn"
 
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report=term-missing -vv"
