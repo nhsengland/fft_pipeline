@@ -1,14 +1,3 @@
-logfiles/
-mock_files/
-inputs/
-outputs/
-rolling_total_file/
-fft_pipeline.log
-*.backup
-*.processed
-*_processed.xlsx
-.hypothesis
-
 # Data directory - never commit to GitHub
 data/
 
@@ -228,6 +217,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
-# Claude helper files directory
-.claude/
