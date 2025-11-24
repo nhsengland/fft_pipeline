@@ -88,3 +88,35 @@ VALIDATION_RULES = {
     },
     # Add ae, ambulance later
 }
+
+# Columns to sum during aggregation
+AGGREGATION_COLUMNS = {
+    "likert_responses": [
+        "1 Very Good",
+        "2 Good",
+        "3 Neither good nor poor",
+        "4 Poor",
+        "5 Very poor",
+        "6 Dont Know",
+    ],
+    "totals": ["Total Responses", "Total Eligible"],
+    "collection_modes": [
+        "Mode SMS",
+        "Mode Electronic Discharge",
+        "Mode Electronic Home",
+        "Mode Paper Discharge",
+        "Mode Paper Home",
+        "Mode Telephone",
+        "Mode Online",
+        "Mode Other",
+    ],
+}
+
+# National aggregation settings
+INDEPENDENT_PROVIDER_CODE = "IS1"
+NHS_PROVIDER_CODE = "NHS"
+TOTAL_PROVIDER_CODE = "Total"
+
+
+# Suppression threshold
+SUPPRESSION_THRESHOLD = 5  # Responses < 5 get suppressed
