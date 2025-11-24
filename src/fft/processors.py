@@ -4,7 +4,13 @@
 import pandas as pd
 import numpy as np
 
-from src.fft.config import COLUMN_MAPS, MONTH_ABBREV, COLUMNS_TO_REMOVE, VALIDATION_RULES
+from src.fft.config import (
+    COLUMN_MAPS,
+    MONTH_ABBREV,
+    COLUMNS_TO_REMOVE,
+    VALIDATION_RULES,
+    AGGREGATION_COLUMNS,
+)
 
 
 # %%
@@ -100,7 +106,6 @@ def extract_fft_period(df: pd.DataFrame) -> str:
         ...
     KeyError: "DataFrame must contain 'Periodname' and 'Yearnumber' columns"
     """
-
     # Get period name and year from first row
     if "Periodname" not in df.columns or "Yearnumber" not in df.columns:
         raise KeyError("DataFrame must contain 'Periodname' and 'Yearnumber' columns")
@@ -187,7 +192,6 @@ def remove_unwanted_columns(
     >>> list(cleaned_empty.columns)
     []
     """
-
     if service_type not in COLUMNS_TO_REMOVE:
         raise KeyError(f"Unknown service type: {service_type}")
     if level not in COLUMNS_TO_REMOVE[service_type]:
@@ -255,8 +259,6 @@ def validate_column_lengths(df: pd.DataFrame, service_type: str) -> pd.DataFrame
         ...
     KeyError: "Column 'Parent org code' not found in DataFrame"
     """
-    from .config import VALIDATION_RULES
-
     if service_type not in VALIDATION_RULES:
         raise KeyError(f"Unknown service type: {service_type}")
 
@@ -346,7 +348,6 @@ def validate_numeric_columns(df: pd.DataFrame, service_type: str) -> pd.DataFram
     >>> len(result)
     0
     """
-
     if service_type not in VALIDATION_RULES:
         raise KeyError(f"Unknown service type: {service_type}")
 
@@ -375,3 +376,374 @@ def validate_numeric_columns(df: pd.DataFrame, service_type: str) -> pd.DataFram
                 )
 
     return df
+
+
+# %% Aggregation
+def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFrame:
+    """Helper function to aggregate data by specified grouping columns.
+
+    This is an internal function used by aggregate_to_icb, aggregate_to_trust, etc.
+
+    Args:
+        df: DataFrame to aggregate
+        group_by_cols: Columns to group by (e.g., ['ICB_Code', 'ICB_Name'])
+
+    Returns:
+        Aggregated DataFrame with recalculated percentages
+
+    Raises:
+        KeyError: If any group_by column is missing
+    """
+    # Check required columns exist
+    missing_cols = [col for col in group_by_cols if col not in df.columns]
+    if missing_cols:
+        raise KeyError(f"DataFrame missing required columns: {missing_cols}")
+
+    # Determine which columns to sum (only those that exist in df)
+    cols_to_sum = []
+    for col_group in ["likert_responses", "totals", "collection_modes"]:
+        cols_to_sum.extend(
+            [col for col in AGGREGATION_COLUMNS[col_group] if col in df.columns]
+        )
+
+    # Group and sum
+    agg_df = df.groupby(group_by_cols, as_index=False)[cols_to_sum].sum()
+
+    # Recalculate percentage positive (Very Good + Good) / Total Responses
+    if all(col in agg_df.columns for col in ["1 Very Good", "2 Good", "Total Responses"]):
+        agg_df["Percentage_Positive"] = (
+            (agg_df["1 Very Good"] + agg_df["2 Good"]) / agg_df["Total Responses"]
+        ).round(4)
+
+    # Recalculate percentage negative (Poor + Very Poor) / Total Responses
+    if all(col in agg_df.columns for col in ["4 Poor", "5 Very poor", "Total Responses"]):
+        agg_df["Percentage_Negative"] = (
+            (agg_df["4 Poor"] + agg_df["5 Very poor"]) / agg_df["Total Responses"]
+        ).round(4)
+
+    return agg_df
+
+
+def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate organisation/trust level data to ICB level.
+
+    Groups by ICB Code and Name, sums all response counts, and recalculates percentages.
+
+    Args:
+        df: DataFrame with trust-level data (must have ICB_Code, ICB_Name)
+
+    Returns:
+        DataFrame aggregated to ICB level with recalculated percentages
+
+    Raises:
+        KeyError: If required columns are missing
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from src.fft.processors import aggregate_to_icb
+    >>> from src.fft.config import AGGREGATION_COLUMNS
+    >>> df = pd.DataFrame({
+    ...     'ICB_Code': ['ABC', 'ABC', 'DEF'],
+    ...     'ICB_Name': ['ICB North', 'ICB North', 'ICB South'],
+    ...     '1 Very Good': [10, 5, 8],
+    ...     '2 Good': [3, 2, 4],
+    ...     '3 Neither good nor poor': [1, 0, 1],
+    ...     '4 Poor': [0, 1, 0],
+    ...     '5 Very poor': [0, 0, 1],
+    ...     '6 Dont Know': [1, 1, 0],
+    ...     'Total Responses': [15, 9, 14],
+    ...     'Total Eligible': [100, 50, 80]
+    ... })
+    >>> result = aggregate_to_icb(df)
+    >>> result[result['ICB_Code'] == 'ABC']['Total Responses'].values[0]
+    np.int64(24)
+    >>> result[result['ICB_Code'] == 'ABC']['1 Very Good'].values[0]
+    np.int64(15)
+    >>> result[result['ICB_Code'] == 'DEF']['Total Responses'].values[0]
+    np.int64(14)
+
+    # Edge case: Missing required columns
+    >>> df_missing = pd.DataFrame({
+    ...     'ICB_Name': ['ICB North'],
+    ...     '1 Very Good': [10],
+    ...     'Total Responses': [15]
+    ... })
+    >>> aggregate_to_icb(df_missing)
+    Traceback (most recent call last):
+        ...
+    KeyError: "DataFrame missing required columns: ['ICB_Code']"
+
+    # Edge case: Empty DataFrame
+    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'ICB_Name', '1 Very Good', 'Total Responses'])
+    >>> result_empty = aggregate_to_icb(df_empty)
+    >>> len(result_empty)
+    0
+    """
+    return _aggregate_by_level(df, ["ICB_Code", "ICB_Name"])
+
+
+def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate site level data to Trust level.
+
+    Groups by Trust Code and Name, sums all response counts, and recalculates percentages.
+
+    Args:
+        df: DataFrame with site-level data (must have Trust_Code, Trust_Name)
+
+    Returns:
+        DataFrame aggregated to Trust level with recalculated percentages
+
+    Raises:
+        KeyError: If required columns are missing
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from src.fft.processors import aggregate_to_trust
+    >>> from src.fft.config import AGGREGATION_COLUMNS
+    >>> df = pd.DataFrame({
+    ...     'Trust_Code': ['T01', 'T01', 'T02'],
+    ...     'Trust_Name': ['Trust A', 'Trust A', 'Trust B'],
+    ...     '1 Very Good': [10, 5, 8],
+    ...     '2 Good': [3, 2, 4],
+    ...     '3 Neither good nor poor': [1, 0, 1],
+    ...     '4 Poor': [0, 1, 0],
+    ...     '5 Very poor': [0, 0, 1],
+    ...     '6 Dont Know': [1, 1, 0],
+    ...     'Total Responses': [15, 9, 14],
+    ...     'Total Eligible': [100, 50, 80]
+    ... })
+    >>> result = aggregate_to_trust(df)
+    >>> result[result['Trust_Code'] == 'T01']['Total Responses'].values[0]
+    np.int64(24)
+    >>> result[result['Trust_Code'] == 'T01']['1 Very Good'].values[0]
+    np.int64(15)
+    >>> result[result['Trust_Code'] == 'T02']['Total Responses'].values[0]
+    np.int64(14)
+
+    # Edge case: Missing required columns
+    >>> df_missing = pd.DataFrame({
+    ...     'Trust_Name': ['Trust A'],
+    ...     '1 Very Good': [10],
+    ...     'Total Responses': [15]
+    ... })
+    >>> aggregate_to_trust(df_missing)
+    Traceback (most recent call last):
+        ...
+    KeyError: "DataFrame missing required columns: ['Trust_Code']"
+
+    # Edge case: Empty DataFrame
+    >>> df_empty = pd.DataFrame(columns=['Trust_Code', 'Trust_Name', '1 Very Good', 'Total Responses'])
+    >>> result_empty = aggregate_to_trust(df_empty)
+    >>> len(result_empty)
+    0
+    """
+    return _aggregate_by_level(df, ["Trust_Code", "Trust_Name"])
+
+
+def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate ward level data to Site level.
+
+    Groups by Site Code and Name, sums all response counts, and recalculates percentages.
+
+    Args:
+        df: DataFrame with ward-level data (must have Site_Code, Site_Name)
+
+    Returns:
+        DataFrame aggregated to Site level with recalculated percentages
+
+    Raises:
+        KeyError: If required columns are missing
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from src.fft.processors import aggregate_to_site
+    >>> df = pd.DataFrame({
+    ...     'Site_Code': ['S01', 'S01', 'S02'],
+    ...     'Site_Name': ['Site A', 'Site A', 'Site B'],
+    ...     '1 Very Good': [10, 5, 8],
+    ...     '2 Good': [3, 2, 4],
+    ...     '3 Neither good nor poor': [1, 0, 1],
+    ...     '4 Poor': [0, 1, 0],
+    ...     '5 Very poor': [0, 0, 1],
+    ...     '6 Dont Know': [1, 1, 0],
+    ...     'Total Responses': [15, 9, 14],
+    ...     'Total Eligible': [100, 50, 80]
+    ... })
+    >>> result = aggregate_to_site(df)
+    >>> result[result['Site_Code'] == 'S01']['Total Responses'].values[0]
+    np.int64(24)
+    >>> result[result['Site_Code'] == 'S01']['1 Very Good'].values[0]
+    np.int64(15)
+    >>> result[result['Site_Code'] == 'S02']['Total Responses'].values[0]
+    np.int64(14)
+
+    # Edge case: Missing required columns
+    >>> df_missing = pd.DataFrame({
+    ...     'Site_Name': ['Site A'],
+    ...     '1 Very Good': [10],
+    ...     'Total Responses': [15]
+    ... })
+    >>> aggregate_to_site(df_missing)
+    Traceback (most recent call last):
+        ...
+    KeyError: "DataFrame missing required columns: ['Site_Code']"
+
+    # Edge case: Empty DataFrame
+    >>> df_empty = pd.DataFrame(columns=['Site_Code', 'Site_Name', '1 Very Good', 'Total Responses'])
+    >>> result_empty = aggregate_to_site(df_empty)
+    >>> len(result_empty)
+    0
+    """
+    return _aggregate_by_level(df, ["Site_Code", "Site_Name"])
+
+
+def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Aggregate data to national level (NHS vs Independent providers).
+
+    Creates three aggregations: Total (all), NHS only, and Independent (IS1) only.
+    Also counts number of submitting organisations in each category.
+
+    Args:
+        df: DataFrame with ICB_Code column
+
+    Returns:
+        Tuple of (aggregated_df, org_counts) where:
+        - aggregated_df has rows for 'Total', 'NHS', 'IS1'
+        - org_counts is dict with keys 'nhs_count', 'is1_count', 'total_count'
+
+    Raises:
+        KeyError: If ICB_Code column is missing
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from src.fft.processors import aggregate_to_national
+    >>> from src.fft.config import AGGREGATION_COLUMNS
+    >>> df = pd.DataFrame({
+    ...     'ICB_Code': ['ABC', 'DEF', 'IS1', 'IS1'],
+    ...     'Trust_Code': ['T01', 'T02', 'T03', 'T04'],
+    ...     '1 Very Good': [10, 5, 8, 3],
+    ...     '2 Good': [3, 2, 4, 1],
+    ...     '3 Neither good nor poor': [1, 0, 1, 0],
+    ...     '4 Poor': [0, 1, 0, 1],
+    ...     '5 Very poor': [0, 0, 1, 0],
+    ...     '6 Dont Know': [1, 1, 0, 0],
+    ...     'Total Responses': [15, 9, 14, 5],
+    ...     'Total Eligible': [100, 50, 80, 30]
+    ... })
+    >>> result_df, counts = aggregate_to_national(df)
+    >>> counts['nhs_count']
+    2
+    >>> counts['is1_count']
+    2
+    >>> counts['total_count']
+    4
+    >>> result_df[result_df['Submitter_Type'] == 'Total']['Total Responses'].values[0]
+    np.int64(43)
+    >>> result_df[result_df['Submitter_Type'] == 'NHS']['Total Responses'].values[0]
+    np.int64(24)
+    >>> result_df[result_df['Submitter_Type'] == 'IS1']['Total Responses'].values[0]
+    np.int64(19)
+
+    # Edge case: Missing ICB_Code
+    >>> df_missing = pd.DataFrame({'Trust_Code': ['T01']})
+    >>> aggregate_to_national(df_missing)
+    Traceback (most recent call last):
+        ...
+    KeyError: "DataFrame must contain 'ICB_Code' column"
+
+    # Edge case: Only NHS providers
+    >>> df_nhs_only = pd.DataFrame({
+    ...     'ICB_Code': ['ABC', 'DEF'],
+    ...     '1 Very Good': [10, 5],
+    ...     '2 Good': [3, 2],
+    ...     '3 Neither good nor poor': [1, 0],
+    ...     '4 Poor': [0, 1],
+    ...     '5 Very poor': [0, 0],
+    ...     '6 Dont Know': [1, 1],
+    ...     'Total Responses': [15, 9],
+    ...     'Total Eligible': [100, 50]
+    ... })
+    >>> result_df_nhs, counts_nhs = aggregate_to_national(df_nhs_only)
+    >>> counts_nhs['is1_count']
+    0
+    >>> len(result_df_nhs)
+    2
+
+    # Edge case: Only IS1 providers
+    >>> df_is1_only = pd.DataFrame({
+    ...     'ICB_Code': ['IS1', 'IS1'],
+    ...     '1 Very Good': [8, 3],
+    ...     '2 Good': [4, 1],
+    ...     '3 Neither good nor poor': [1, 0],
+    ...     '4 Poor': [0, 1],
+    ...     '5 Very poor': [1, 0],
+    ...     '6 Dont Know': [0, 0],
+    ...     'Total Responses': [14, 5],
+    ...     'Total Eligible': [80, 30]
+    ... })
+    >>> result_df_is1, counts_is1 = aggregate_to_national(df_is1_only)
+    >>> counts_is1['nhs_count']
+    0
+    >>> len(result_df_is1)
+    2
+
+    # Edge case: Empty DataFrame
+    >>> df_empty = pd.DataFrame(columns=['ICB_Code', '1 Very Good', 'Total Responses'])
+    >>> result_df_empty, counts_empty = aggregate_to_national(df_empty)
+    >>> counts_empty['nhs_count']
+    0
+    >>> counts_empty['is1_count']
+    0
+    >>> counts_empty['total_count']
+    0
+    >>> len(result_df_empty)
+    0
+    """
+    if "ICB_Code" not in df.columns:
+        raise KeyError("DataFrame must contain 'ICB_Code' column")
+
+    # Count organizations before transformation
+    nhs_count = df[df["ICB_Code"] != "IS1"].shape[0]
+    is1_count = df[df["ICB_Code"] == "IS1"].shape[0]
+    total_count = df.shape[0]
+
+    org_counts = {
+        "nhs_count": nhs_count,
+        "is1_count": is1_count,
+        "total_count": total_count,
+    }
+
+    # Create working copy and add Submitter_Type
+    work_df = df.copy()
+    work_df["Submitter_Type"] = work_df["ICB_Code"].apply(
+        lambda x: "IS1" if x == "IS1" else "NHS"
+    )
+
+    # Determine which columns to sum
+    cols_to_sum = []
+    for col_group in ["likert_responses", "totals", "collection_modes"]:
+        cols_to_sum.extend(
+            [col for col in AGGREGATION_COLUMNS[col_group] if col in work_df.columns]
+        )
+
+    # Aggregate by Submitter_Type
+    agg_df = work_df.groupby("Submitter_Type", as_index=False)[cols_to_sum].sum()
+
+    # Create Total row (sum of NHS + IS1)
+    if len(agg_df) > 0:
+        total_row = agg_df[cols_to_sum].sum().to_frame().T
+        total_row["Submitter_Type"] = "Total"
+        agg_df = pd.concat([total_row, agg_df], ignore_index=True)
+
+    # Recalculate percentages
+    if all(col in agg_df.columns for col in ["1 Very Good", "2 Good", "Total Responses"]):
+        agg_df["Percentage_Positive"] = (
+            (agg_df["1 Very Good"] + agg_df["2 Good"]) / agg_df["Total Responses"]
+        ).round(4)
+
+    if all(col in agg_df.columns for col in ["4 Poor", "5 Very poor", "Total Responses"]):
+        agg_df["Percentage_Negative"] = (
+            (agg_df["4 Poor"] + agg_df["5 Very poor"]) / agg_df["Total Responses"]
+        ).round(4)
+
+    return agg_df, org_counts

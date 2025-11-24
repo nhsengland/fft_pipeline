@@ -26,7 +26,7 @@ def create_structure():
         "src/fft/config.py": '"""Configuration for FFT pipeline."""\n',
         "src/fft/loaders.py": '"""Data loading functions."""\n',
         "src/fft/processors.py": '"""Data transformation functions."""\n',
-        "src/fft/suppression.py": '"""Suppression logic."""\n',
+        "src/fft/suppression.py": '"""Suppression logic for data privacy protection."""\n',
         "src/fft/writers.py": '"""Excel output functions."""\n',
         "src/fft/utils.py": '"""Helper utilities."""\n',
         "src/__main__.py": '"""CLI entry point for FFT pipeline."""\n',
