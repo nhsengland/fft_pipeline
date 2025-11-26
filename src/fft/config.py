@@ -1,6 +1,10 @@
-"""Configuration for FFT pipeline."""
+"""Configuration for FFT pipeline paths, mappings, and constants."""
 
 from pathlib import Path
+
+# =============================================================================
+# PATHS
+# =============================================================================
 
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -10,34 +14,57 @@ ROLLING_TOTALS_DIR = INPUTS_DIR / "rolling_totals"
 TEMPLATES_DIR = INPUTS_DIR / "templates"
 OUTPUTS_DIR = DATA_DIR / "outputs"
 
-SUPPRESSION_THRESHOLD = 5
+# =============================================================================
+# FILE PATTERNS
+# =============================================================================
 
-# File patterns for each service type
 FILE_PATTERNS = {
-    "inpatient": "FFT_Inpatients_V1*.xlsx",
+    "inpatient": "FFT_IP_V1*.xlsx",
     "ae": "FFT_AE_V1*.xlsx",
     "ambulance": "FFT_Ambulance_V1*.xlsx",
 }
 
+# =============================================================================
+# REUSABLE COLUMN GROUPS
+# =============================================================================
 
-# Column mappings for each service type and level
-COLUMN_MAPS = {
-    "inpatient": {
-        "organisation": {
-            "Parent org code": "ICB_Code",
-            "Parent name": "ICB_Name",
-            # ... more mappings
-        },
-        # "site": {...},
-        # "ward": {...},
-    },
-    # "ae": {
-    #     "organisation": {...},
-    #        "site": {...}},
-}
+# Geographic identifiers
+ICB_COLS = ["ICB Code", "ICB Name"]
+TRUST_COLS = ["Trust Code", "Trust Name"]
+SITE_COLS = ["Site Code", "Site Name"]
+WARD_COLS = ["Ward Name"]
 
+# Core data columns
+TOTALS_COLS = ["Total Responses", "Total Eligible"]
+PERCENTAGE_COLS = ["Percentage Positive", "Percentage Negative"]
+LIKERT_COLS = [
+    "Very Good",
+    "Good",
+    "Neither Good nor Poor",
+    "Poor",
+    "Very Poor",
+    "Don't Know",
+]
 
-# Month abbreviations for FFT period formatting
+# Collection mode columns
+MODE_COLS = [
+    "Mode SMS",
+    "Mode Electronic Discharge",
+    "Mode Electronic Home",
+    "Mode Paper Discharge",
+    "Mode Paper Home",
+    "Mode Telephone",
+    "Mode Online",
+    "Mode Other",
+]
+
+# Specialty columns (ward level only)
+SPECIALTY_COLS = ["First Speciality", "Second Speciality"]
+
+# =============================================================================
+# MONTH ABBREVIATIONS
+# =============================================================================
+
 MONTH_ABBREV = {
     "JANUARY": "Jan",
     "FEBRUARY": "Feb",
@@ -53,8 +80,27 @@ MONTH_ABBREV = {
     "DECEMBER": "Dec",
 }
 
+# =============================================================================
+# COLUMN MAPPINGS (raw data → standardised names)
+# =============================================================================
 
-# Columns to remove from raw data at each level
+COLUMN_MAPS = {
+    "inpatient": {
+        "organisation": {
+            "Parent org code": "ICB_Code",
+            "Parent name": "ICB_Name",
+            # ... more mappings
+        },
+        # "site": {...},
+        # "ward": {...},
+    },
+    # "ae": {...},
+}
+
+# =============================================================================
+# COLUMNS TO REMOVE
+# =============================================================================
+
 COLUMNS_TO_REMOVE = {
     "inpatient": {
         "organisation": ["Yearnumber", "Periodname", "Title", "Response Rate"],
@@ -64,7 +110,10 @@ COLUMNS_TO_REMOVE = {
     # Add ae, ambulance later
 }
 
-# Validation rules for data quality checks
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+
 VALIDATION_RULES = {
     "inpatient": {
         "column_lengths": {
@@ -89,7 +138,10 @@ VALIDATION_RULES = {
     # Add ae, ambulance later
 }
 
-# Columns to sum during aggregation
+# =============================================================================
+# AGGREGATION COLUMNS
+# =============================================================================
+
 AGGREGATION_COLUMNS = {
     "likert_responses": [
         "1 Very Good",
@@ -112,11 +164,67 @@ AGGREGATION_COLUMNS = {
     ],
 }
 
-# National aggregation settings
-INDEPENDENT_PROVIDER_CODE = "IS1"
-NHS_PROVIDER_CODE = "NHS"
-TOTAL_PROVIDER_CODE = "Total"
+# =============================================================================
+# SUPPRESSION
+# =============================================================================
 
-
-# Suppression threshold
 SUPPRESSION_THRESHOLD = 5  # Responses < 5 get suppressed
+
+# =============================================================================
+# TEMPLATE CONFIGURATION
+# =============================================================================
+
+TEMPLATE_CONFIG = {
+    "inpatient": {
+        "template_file": "FFT_IP_template.xlsm",
+        "output_prefix": "FFT-inpatient-data",
+        "data_start_row": 15,
+        "england_rows": {"including_is": 12, "excluding_is": 13, "selection": 14},
+        "sheets": {
+            "icb": {
+                "sheet_name": "ICB",
+                "name_column": "ICB Name",
+                "columns": [*ICB_COLS, *TOTALS_COLS, *PERCENTAGE_COLS, *LIKERT_COLS],
+            },
+            "trust": {
+                "sheet_name": "Trusts",
+                "name_column": "Trust Name",
+                "columns": [
+                    *ICB_COLS,
+                    *TRUST_COLS,
+                    *TOTALS_COLS,
+                    *PERCENTAGE_COLS,
+                    *LIKERT_COLS,
+                    *MODE_COLS,
+                ],
+            },
+            "site": {
+                "sheet_name": "Sites",
+                "name_column": "Site Name",
+                "columns": [
+                    *ICB_COLS,
+                    *TRUST_COLS,
+                    *SITE_COLS,
+                    *TOTALS_COLS,
+                    *PERCENTAGE_COLS,
+                    *LIKERT_COLS,
+                ],
+            },
+            "ward": {
+                "sheet_name": "Wards",
+                "name_column": "Ward Name",
+                "columns": [
+                    *ICB_COLS,
+                    *TRUST_COLS,
+                    *SITE_COLS,
+                    *WARD_COLS,
+                    *TOTALS_COLS,
+                    *PERCENTAGE_COLS,
+                    *LIKERT_COLS,
+                    *SPECIALTY_COLS,
+                ],
+            },
+        },
+    },
+    # Add ae, ambulance later using same composable pattern
+}
