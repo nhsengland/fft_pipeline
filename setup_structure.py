@@ -23,7 +23,7 @@ def create_structure():
     # Module files with docstrings
     modules = {
         "src/fft/__init__.py": '"""FFT Pipeline package."""\n',
-        "src/fft/config.py": '"""Configuration for FFT pipeline."""\n',
+        "src/fft/config.py": '"""Configuration for FFT pipeline paths, mappings, and constants."""\n',
         "src/fft/loaders.py": '"""Data loading functions."""\n',
         "src/fft/processors.py": '"""Data transformation functions."""\n',
         "src/fft/suppression.py": '"""Suppression logic for data privacy protection."""\n',
