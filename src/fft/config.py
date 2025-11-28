@@ -228,3 +228,115 @@ TEMPLATE_CONFIG = {
     },
     # Add ae, ambulance later using same composable pattern
 }
+
+# =============================================================================
+# BS SHEET CONFIGURATION
+# =============================================================================
+
+# BS Sheet column positions (1-indexed)
+BS_SHEET_CONFIG = {
+    "inpatient": {
+        "reference_list_start_col": 21,  # Column U
+        "reference_list_start_row": 2,
+        "reference_columns": [
+            "ICB Code",
+            "ICB Name",
+            "Trust Code",
+            "Trust Name",
+            "Site Code",
+            "Site Name",
+        ],
+        "linked_lists": {
+            "trusts": {"start_col": 31, "columns": ["Trust Code", "Trust Name"]},  # AE:AF
+            "sites": {
+                "start_col": 34,
+                "columns": ["Trust Code", "Trust Name", "Site Code", "Site Name"],
+            },  # AH:AK
+            "wards": {
+                "start_col": 39,
+                "columns": [
+                    "Trust Code",
+                    "Trust Name",
+                    "Site Code",
+                    "Site Name",
+                    "Ward Name",
+                ],
+            },  # AM:AQ
+        },
+    }
+}
+
+# =============================================================================
+# PERIOD LABEL CONFIGURATION
+# =============================================================================
+
+# Period label configuration (cells that need FFT period updated)
+PERIOD_LABEL_CONFIG = {
+    "inpatient": {
+        "notes_title": {
+            "sheet": "Notes",
+            "cell": "A2",
+            "template": "Inpatient Friends and Family Test (FFT) Data - {period}",
+        }
+    },
+    "ae": {
+        "notes_title": {
+            "sheet": "Notes",
+            "cell": "A2",
+            "template": "A&E Friends and Family Test (FFT) Data - {period}",
+        }
+    },
+    "ambulance": {
+        "notes_title": {
+            "sheet": "Notes",
+            "cell": "A2",
+            "template": "Ambulance Friends and Family Test (FFT) Data - {period}",
+        }
+    },
+}
+
+# =============================================================================
+# PERCENTAGE COLUMN POSITIONS
+# =============================================================================
+
+# Percentage column positions per sheet (1-indexed)
+PERCENTAGE_COLUMN_CONFIG = {
+    "inpatient": {
+        "ICB": [5, 6],  # Columns E, F (Percentage Positive, Percentage Negative)
+        "Trusts": [6, 7],  # Columns F, G
+        "Sites": [8, 9],  # Columns H, I
+        "Wards": [9, 10],  # Columns I, J
+    }
+}
+
+# =============================================================================
+# PROCESSING LEVELS PER SERVICE TYPE
+# =============================================================================
+
+# Processing levels per service type (in order of processing)
+PROCESSING_LEVELS = {
+    "inpatient": {
+        "levels": ["ward", "site", "organisation"],
+        "sheet_mapping": {
+            "ward": "Parent & Self Trusts - Ward Lev",
+            "site": "Parent & Self Trusts - Site Lev",
+            "organisation": "Parent & Self Trusts - Organisa",
+            "collection_mode": "Parent & Self Trusts - Collecti",
+        },
+    },
+    "ae": {
+        "levels": ["site", "organisation"],
+        "sheet_mapping": {
+            "site": "Parent & Self - Site Level",
+            "organisation": "Parent & Self - Organisation Le",
+            "collection_mode": "Parent & Self - Collection Mode",
+        },
+    },
+    "ambulance": {
+        "levels": ["organisation"],
+        "sheet_mapping": {
+            "organisation": "Organisation_Level_PTS",
+            "collection_mode": "Collection Mode",
+        },
+    },
+}
