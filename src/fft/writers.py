@@ -220,8 +220,13 @@ def write_bs_lookup_data(
         # Write each column separately (they get sorted independently)
         for col_offset, col_name in enumerate(columns):
             col_values = (
-                unique_df[col_name].drop_duplicates().sort_values().reset_index(drop=True)
+                unique_df[col_name]
+                .astype(str)
+                .drop_duplicates()
+                .sort_values()
+                .reset_index(drop=True)
             )
+
             for row_idx, value in enumerate(col_values, start=1):
                 sheet.cell(row=row_idx, column=start_col + col_offset).value = value
 

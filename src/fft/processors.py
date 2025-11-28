@@ -117,10 +117,17 @@ def extract_fft_period(df: pd.DataFrame) -> str:
     if period_name not in MONTH_ABBREV:
         raise ValueError(f"Invalid period name '{period_name}'")
 
-    # Validate year format (should be like '2024-25')
-    if len(year_number) != 7 or year_number[4] != "-":
+    # Handle both formats: 'YYYY-YY' and 'YYYY_YY'
+    separator = None
+    if len(year_number) == 7:
+        if year_number[4] == "-":
+            separator = "-"
+        elif year_number[4] == "_":
+            separator = "_"
+
+    if separator is None:
         raise ValueError(
-            f"Invalid year format '{year_number}', expected format: 'YYYY-YY'"
+            f"Invalid year format '{year_number}', expected format: 'YYYY-YY' or 'YYYY_YY'"
         )
 
     # Extract years

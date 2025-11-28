@@ -35,7 +35,7 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
     excel_file = pd.ExcelFile(file_path)
 
     return {
-        sheet: pd.read_excel(excel_file, sheet_name=sheet)
+        sheet: pd.read_excel(excel_file, sheet_name=sheet, header=2)  # Row 3 = header=2
         for sheet in excel_file.sheet_names
     }
 
@@ -78,8 +78,6 @@ def identify_service_type(filename: str) -> str:
         raise ValueError(f"Unknown service type in filename: {filename}")
 
 
-
-
 # %%
 def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     """Find the n most recent raw data files for the given service type.
@@ -111,7 +109,6 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
         ...
     ValueError: Unknown service type: unknown_service
     """
-
     pattern = FILE_PATTERNS.get(service_type)
     if not pattern:
         raise ValueError(f"Unknown service type: {service_type}")
