@@ -97,7 +97,7 @@ def extract_fft_period(df: pd.DataFrame) -> str:
     >>> extract_fft_period(df)
     Traceback (most recent call last):
         ...
-    ValueError: Invalid year format '202425', expected format: 'YYYY-YY'
+    ValueError: Invalid year format '202425', expected format: 'YYYY-YY' or 'YYYY_YY'
 
     # Edge case: Missing required columns
     >>> df_missing_cols = pd.DataFrame({'Other': ['data']})

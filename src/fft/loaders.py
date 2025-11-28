@@ -145,6 +145,11 @@ def load_rolling_totals(service_type: str) -> pd.DataFrame:
     filename = f"Monthly Rolling Totals {service_type}.csv"
     file_path = ROLLING_TOTALS_DIR / filename
 
+    # Handle plural form for inpatient (common naming inconsistency)
+    if not file_path.exists() and service_type == "inpatient":
+        filename = f"Monthly Rolling Totals {service_type}s.csv"
+        file_path = ROLLING_TOTALS_DIR / filename
+
     if not file_path.exists():
         # Use exactly the error message expected in the doctest
         raise FileNotFoundError("Rolling totals not found:")

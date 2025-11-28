@@ -154,6 +154,13 @@ def run_pipeline(service_type: str) -> None:
     national_df, org_counts = aggregate_to_national(org_df)
     logger.info(f"Organisation counts: {org_counts}")
 
+    # DEBUG: Check what we're generating
+    print("\n=== DEBUG: National DF ===")
+    print(national_df)
+    print("\n=== DEBUG: ICB DF ===")
+    print(icb_df.head())
+    print(f"ICB columns: {list(icb_df.columns)}")
+
     # Step 7: Load template
     logger.info("Loading template...")
     wb = load_template(service_type)

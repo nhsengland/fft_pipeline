@@ -152,13 +152,13 @@ def write_bs_lookup_data(
     >>> import pandas as pd
     >>> wb = load_template('inpatient')
     >>> df = pd.DataFrame({
-    ...     'ICB Code': ['ABC', 'ABC', 'DEF'],
-    ...     'ICB Name': ['ICB North', 'ICB North', 'ICB South'],
-    ...     'Trust Code': ['T01', 'T01', 'T02'],
-    ...     'Trust Name': ['Trust A', 'Trust A', 'Trust B'],
-    ...     'Site Code': ['S01', 'S02', 'S03'],
-    ...     'Site Name': ['Site 1', 'Site 2', 'Site 3'],
-    ...     'Ward Name': ['Ward 1', 'Ward 2', 'Ward 3']
+    ...     'ICB_Code': ['ABC', 'ABC', 'DEF'],
+    ...     'ICB_Name': ['ICB North', 'ICB North', 'ICB South'],
+    ...     'Trust_Code': ['T01', 'T01', 'T02'],
+    ...     'Trust_Name': ['Trust A', 'Trust A', 'Trust B'],
+    ...     'Site_Code': ['S01', 'S02', 'S03'],
+    ...     'Site_Name': ['Site 1', 'Site 2', 'Site 3'],
+    ...     'Ward_Name': ['Ward 1', 'Ward 2', 'Ward 3']
     ... })
     >>> write_bs_lookup_data(wb, df, 'inpatient')
     >>> wb['BS'].cell(row=2, column=21).value
@@ -173,12 +173,12 @@ def write_bs_lookup_data(
     KeyError: "Sheet 'BS' not found in template workbook"
 
     # Edge case: Missing required columns
-    >>> df_missing = pd.DataFrame({'ICB Code': ['ABC']})
+    >>> df_missing = pd.DataFrame({'ICB_Code': ['ABC']})
     >>> wb2 = load_template('inpatient')
     >>> write_bs_lookup_data(wb2, df_missing, 'inpatient')
     Traceback (most recent call last):
         ...
-    KeyError: "Required column 'ICB Name' not found in DataFrame"
+    KeyError: "Required column 'ICB_Name' not found in DataFrame"
     """
     if "BS" not in workbook.sheetnames:
         raise KeyError("Sheet 'BS' not found in template workbook")
