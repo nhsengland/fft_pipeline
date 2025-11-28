@@ -19,7 +19,7 @@ OUTPUTS_DIR = DATA_DIR / "outputs"
 # =============================================================================
 
 FILE_PATTERNS = {
-    "inpatient": "FFT_IP_V1*.xlsx",
+    "inpatient": "FFT_Inpatients_V1*.xlsx",
     "ae": "FFT_AE_V1*.xlsx",
     "ambulance": "FFT_Ambulance_V1*.xlsx",
 }
@@ -84,17 +84,63 @@ MONTH_ABBREV = {
 # COLUMN MAPPINGS (raw data → standardised names)
 # =============================================================================
 
+# Column mappings for each service type and level
 COLUMN_MAPS = {
     "inpatient": {
+        "ward": {
+            "Parent org code": "ICB_Code",
+            "Parent name": "ICB_Name",
+            "Org code": "Trust_Code",
+            "Org name": "Trust_Name",
+            "Site code": "Site_Code",
+            "Site name": "Site_Name",
+            "Ward name": "Ward_Name",
+            "1 Very Good SUM": "Very Good",
+            "2 Good SUM": "Good",
+            "3 Neither Good nor Poor SUM": "Neither Good nor Poor",
+            "4 Poor SUM": "Poor",
+            "5 Very Poor SUM": "Very Poor",
+            "6 Dont Know SUM": "Don't Know",
+            "Total Eligible SUM": "Total Eligible",
+            "Spec 1": "First Speciality",
+            "Spec 2": "Second Speciality",
+            "Prop_Pos": "Percentage_Positive",
+            "Prop_Neg": "Percentage_Negative",
+        },
+        "site": {
+            "Parent org code": "ICB_Code",
+            "Parent name": "ICB_Name",
+            "Org code": "Trust_Code",
+            "Org name": "Trust_Name",
+            "Site Code": "Site_Code",
+            "Site Name MAX": "Site_Name",
+            "1 Very Good SUM": "Very Good",
+            "2 Good SUM": "Good",
+            "3 Neither Good nor Poor SUM": "Neither Good nor Poor",
+            "4 Poor SUM": "Poor",
+            "5 Very Poor SUM": "Very Poor",
+            "6 Dont Know SUM": "Don't Know",
+            "Total Eligible SUM": "Total Eligible",
+            "Prop_Pos": "Percentage_Positive",
+            "Prop_Neg": "Percentage_Negative",
+        },
         "organisation": {
             "Parent org code": "ICB_Code",
             "Parent name": "ICB_Name",
-            # ... more mappings
+            "Org code": "Trust_Code",
+            "Org name": "Trust_Name",
+            "1 Very Good SUM": "Very Good",
+            "2 Good SUM": "Good",
+            "3 Neither Good nor Poor SUM": "Neither Good nor Poor",
+            "4 Poor SUM": "Poor",
+            "5 Very Poor SUM": "Very Poor",
+            "6 Dont Know SUM": "Don't Know",
+            "Total Eligible SUM": "Total Eligible",
+            "Prop_Pos": "Percentage_Positive",
+            "Prop_Neg": "Percentage_Negative",
         },
-        # "site": {...},
-        # "ward": {...},
     },
-    # "ae": {...},
+    # Add ae, ambulance later
 }
 
 # =============================================================================
@@ -239,29 +285,29 @@ BS_SHEET_CONFIG = {
         "reference_list_start_col": 21,  # Column U
         "reference_list_start_row": 2,
         "reference_columns": [
-            "ICB Code",
-            "ICB Name",
-            "Trust Code",
-            "Trust Name",
-            "Site Code",
-            "Site Name",
+            "ICB_Code",
+            "ICB_Name",
+            "Trust_Code",
+            "Trust_Name",
+            "Site_Code",
+            "Site_Name",
         ],
         "linked_lists": {
-            "trusts": {"start_col": 31, "columns": ["Trust Code", "Trust Name"]},  # AE:AF
+            "trusts": {"start_col": 31, "columns": ["Trust_Code", "Trust_Name"]},
             "sites": {
                 "start_col": 34,
-                "columns": ["Trust Code", "Trust Name", "Site Code", "Site Name"],
-            },  # AH:AK
+                "columns": ["Trust_Code", "Trust_Name", "Site_Code", "Site_Name"],
+            },
             "wards": {
                 "start_col": 39,
                 "columns": [
-                    "Trust Code",
-                    "Trust Name",
-                    "Site Code",
-                    "Site Name",
-                    "Ward Name",
+                    "Trust_Code",
+                    "Trust_Name",
+                    "Site_Code",
+                    "Site_Name",
+                    "Ward_Name",
                 ],
-            },  # AM:AQ
+            },
         },
     }
 }
@@ -339,4 +385,17 @@ PROCESSING_LEVELS = {
             "collection_mode": "Collection Mode",
         },
     },
+}
+
+# =============================================================================
+# CLI SERVICE TYPE MAPPINGS
+# =============================================================================
+
+SERVICE_TYPES = {
+    "ip": "inpatient",
+    "ae": "ae",
+    "ambulance": "ambulance",
+    # Add new service types here:
+    # 'op': 'outpatient',
+    # 'maternity': 'maternity',
 }
