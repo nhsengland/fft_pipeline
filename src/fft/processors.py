@@ -306,12 +306,12 @@ def validate_numeric_columns(df: pd.DataFrame, service_type: str) -> pd.DataFram
     >>> from src.fft.processors import validate_numeric_columns
     >>> from src.fft.config import VALIDATION_RULES
     >>> df = pd.DataFrame({
-    ...     '1 Very Good': [10, 20],
-    ...     '2 Good': [5, 15],
-    ...     '3 Neither good nor poor': [2, 3],
-    ...     '4 Poor': [1, 0],
-    ...     '5 Very poor': [0, 1],
-    ...     '6 Dont Know': [10, 2],
+    ...     'Very Good': [10, 20],
+    ...     'Good': [5, 15],
+    ...     'Neither good nor poor': [2, 3],
+    ...     'Poor': [1, 0],
+    ...     'Very poor': [0, 1],
+    ...     'Dont Know': [10, 2],
     ...     'Total Responses': [28, 41],
     ...     'Total Eligible': [100, 150],
     ...     'Prop_Pos': [0.95, 0.87],
@@ -321,33 +321,33 @@ def validate_numeric_columns(df: pd.DataFrame, service_type: str) -> pd.DataFram
     >>> result.shape
     (2, 10)
     >>> list(result.columns)
-    ['1 Very Good', '2 Good', '3 Neither good nor poor', '4 Poor', '5 Very poor', '6 Dont Know', 'Total Responses', 'Total Eligible', 'Prop_Pos', 'Prop_Neg']
+    ['Very Good', 'Good', 'Neither good nor poor', 'Poor', 'Very poor', 'Dont Know', 'Total Responses', 'Total Eligible', 'Prop_Pos', 'Prop_Neg']
 
     # Edge case: Unknown service type
-    >>> df_bad = pd.DataFrame({'1 Very Good': [5.5]})
+    >>> df_bad = pd.DataFrame({'Very Good': [5.5]})
     >>> validate_numeric_columns(df_bad, 'unknown_service')
     Traceback (most recent call last):
         ...
     KeyError: 'Unknown service type: unknown_service'
 
     # Edge case: Missing column
-    >>> df_missing = pd.DataFrame({'2 Good': [5.5]})
+    >>> df_missing = pd.DataFrame({'Good': [5.5]})
     >>> validate_numeric_columns(df_missing, 'inpatient')
     Traceback (most recent call last):
         ...
-    KeyError: "Column '1 Very Good' not found in DataFrame"
+    KeyError: "Column 'Very Good' not found in DataFrame"
 
     # Edge case: Incorrect type
-    >>> df_invalid = pd.DataFrame({'1 Very Good': [10, 'twenty'], '2 Good': [5.5, 15.0]})
+    >>> df_invalid = pd.DataFrame({'Very Good': [10, 'twenty'], 'Good': [5.5, 15.0]})
     >>> validate_numeric_columns(df_invalid, 'inpatient')
     Traceback (most recent call last):
         ...
-    TypeError: Row 1 in column '1 Very Good' contains non-integer value
+    TypeError: Row 1 in column 'Very Good' contains non-integer value
 
     # Edge case: Empty DataFrame
     >>> df_empty = pd.DataFrame({
-    ...     '1 Very Good': [], '2 Good': [], '3 Neither good nor poor': [],
-    ...     '4 Poor': [], '5 Very poor': [], '6 Dont Know': [],
+    ...     'Very Good': [], 'Good': [], 'Neither good nor poor': [],
+    ...     'Poor': [], 'Very poor': [], 'Dont Know': [],
     ...     'Total Responses': [], 'Total Eligible': [],
     ...     'Prop_Pos': [], 'Prop_Neg': []
     ... })
@@ -416,16 +416,14 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
     # Group and sum
     agg_df = df.groupby(group_by_cols, as_index=False)[cols_to_sum].sum()
 
-    # Recalculate percentage positive (Very Good + Good) / Total Responses
-    if all(col in agg_df.columns for col in ["1 Very Good", "2 Good", "Total Responses"]):
+    if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
         agg_df["Percentage_Positive"] = (
-            (agg_df["1 Very Good"] + agg_df["2 Good"]) / agg_df["Total Responses"]
+            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
         ).round(4)
 
-    # Recalculate percentage negative (Poor + Very Poor) / Total Responses
-    if all(col in agg_df.columns for col in ["4 Poor", "5 Very poor", "Total Responses"]):
+    if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
         agg_df["Percentage_Negative"] = (
-            (agg_df["4 Poor"] + agg_df["5 Very poor"]) / agg_df["Total Responses"]
+            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
         ).round(4)
 
     return agg_df
@@ -452,19 +450,19 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     >>> df = pd.DataFrame({
     ...     'ICB_Code': ['ABC', 'ABC', 'DEF'],
     ...     'ICB_Name': ['ICB North', 'ICB North', 'ICB South'],
-    ...     '1 Very Good': [10, 5, 8],
-    ...     '2 Good': [3, 2, 4],
-    ...     '3 Neither good nor poor': [1, 0, 1],
-    ...     '4 Poor': [0, 1, 0],
-    ...     '5 Very poor': [0, 0, 1],
-    ...     '6 Dont Know': [1, 1, 0],
+    ...     'Very Good': [10, 5, 8],
+    ...     'Good': [3, 2, 4],
+    ...     'Neither good nor poor': [1, 0, 1],
+    ...     'Poor': [0, 1, 0],
+    ...     'Very poor': [0, 0, 1],
+    ...     'Dont Know': [1, 1, 0],
     ...     'Total Responses': [15, 9, 14],
     ...     'Total Eligible': [100, 50, 80]
     ... })
     >>> result = aggregate_to_icb(df)
     >>> result[result['ICB_Code'] == 'ABC']['Total Responses'].values[0]
     np.int64(24)
-    >>> result[result['ICB_Code'] == 'ABC']['1 Very Good'].values[0]
+    >>> result[result['ICB_Code'] == 'ABC']['Very Good'].values[0]
     np.int64(15)
     >>> result[result['ICB_Code'] == 'DEF']['Total Responses'].values[0]
     np.int64(14)
@@ -472,7 +470,7 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     # Edge case: Missing required columns
     >>> df_missing = pd.DataFrame({
     ...     'ICB_Name': ['ICB North'],
-    ...     '1 Very Good': [10],
+    ...     'Very Good': [10],
     ...     'Total Responses': [15]
     ... })
     >>> aggregate_to_icb(df_missing)
@@ -481,7 +479,7 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     KeyError: "DataFrame missing required columns: ['ICB_Code']"
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'ICB_Name', '1 Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'ICB_Name', 'Very Good', 'Total Responses'])
     >>> result_empty = aggregate_to_icb(df_empty)
     >>> len(result_empty)
     0
@@ -510,19 +508,19 @@ def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
     >>> df = pd.DataFrame({
     ...     'Trust_Code': ['T01', 'T01', 'T02'],
     ...     'Trust_Name': ['Trust A', 'Trust A', 'Trust B'],
-    ...     '1 Very Good': [10, 5, 8],
-    ...     '2 Good': [3, 2, 4],
-    ...     '3 Neither good nor poor': [1, 0, 1],
-    ...     '4 Poor': [0, 1, 0],
-    ...     '5 Very poor': [0, 0, 1],
-    ...     '6 Dont Know': [1, 1, 0],
+    ...     'Very Good': [10, 5, 8],
+    ...     'Good': [3, 2, 4],
+    ...     'Neither good nor poor': [1, 0, 1],
+    ...     'Poor': [0, 1, 0],
+    ...     'Very poor': [0, 0, 1],
+    ...     'Dont Know': [1, 1, 0],
     ...     'Total Responses': [15, 9, 14],
     ...     'Total Eligible': [100, 50, 80]
     ... })
     >>> result = aggregate_to_trust(df)
     >>> result[result['Trust_Code'] == 'T01']['Total Responses'].values[0]
     np.int64(24)
-    >>> result[result['Trust_Code'] == 'T01']['1 Very Good'].values[0]
+    >>> result[result['Trust_Code'] == 'T01']['Very Good'].values[0]
     np.int64(15)
     >>> result[result['Trust_Code'] == 'T02']['Total Responses'].values[0]
     np.int64(14)
@@ -530,7 +528,7 @@ def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
     # Edge case: Missing required columns
     >>> df_missing = pd.DataFrame({
     ...     'Trust_Name': ['Trust A'],
-    ...     '1 Very Good': [10],
+    ...     'Very Good': [10],
     ...     'Total Responses': [15]
     ... })
     >>> aggregate_to_trust(df_missing)
@@ -539,7 +537,7 @@ def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
     KeyError: "DataFrame missing required columns: ['Trust_Code']"
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['Trust_Code', 'Trust_Name', '1 Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=['Trust_Code', 'Trust_Name', 'Very Good', 'Total Responses'])
     >>> result_empty = aggregate_to_trust(df_empty)
     >>> len(result_empty)
     0
@@ -567,19 +565,19 @@ def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
     >>> df = pd.DataFrame({
     ...     'Site_Code': ['S01', 'S01', 'S02'],
     ...     'Site_Name': ['Site A', 'Site A', 'Site B'],
-    ...     '1 Very Good': [10, 5, 8],
-    ...     '2 Good': [3, 2, 4],
-    ...     '3 Neither good nor poor': [1, 0, 1],
-    ...     '4 Poor': [0, 1, 0],
-    ...     '5 Very poor': [0, 0, 1],
-    ...     '6 Dont Know': [1, 1, 0],
+    ...     'Very Good': [10, 5, 8],
+    ...     'Good': [3, 2, 4],
+    ...     'Neither good nor poor': [1, 0, 1],
+    ...     'Poor': [0, 1, 0],
+    ...     'Very poor': [0, 0, 1],
+    ...     'Dont Know': [1, 1, 0],
     ...     'Total Responses': [15, 9, 14],
     ...     'Total Eligible': [100, 50, 80]
     ... })
     >>> result = aggregate_to_site(df)
     >>> result[result['Site_Code'] == 'S01']['Total Responses'].values[0]
     np.int64(24)
-    >>> result[result['Site_Code'] == 'S01']['1 Very Good'].values[0]
+    >>> result[result['Site_Code'] == 'S01']['Very Good'].values[0]
     np.int64(15)
     >>> result[result['Site_Code'] == 'S02']['Total Responses'].values[0]
     np.int64(14)
@@ -587,7 +585,7 @@ def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
     # Edge case: Missing required columns
     >>> df_missing = pd.DataFrame({
     ...     'Site_Name': ['Site A'],
-    ...     '1 Very Good': [10],
+    ...     'Very Good': [10],
     ...     'Total Responses': [15]
     ... })
     >>> aggregate_to_site(df_missing)
@@ -596,7 +594,7 @@ def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
     KeyError: "DataFrame missing required columns: ['Site_Code']"
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['Site_Code', 'Site_Name', '1 Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=['Site_Code', 'Site_Name', 'Very Good', 'Total Responses'])
     >>> result_empty = aggregate_to_site(df_empty)
     >>> len(result_empty)
     0
@@ -628,12 +626,12 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     >>> df = pd.DataFrame({
     ...     'ICB_Code': ['ABC', 'DEF', 'IS1', 'IS1'],
     ...     'Trust_Code': ['T01', 'T02', 'T03', 'T04'],
-    ...     '1 Very Good': [10, 5, 8, 3],
-    ...     '2 Good': [3, 2, 4, 1],
-    ...     '3 Neither good nor poor': [1, 0, 1, 0],
-    ...     '4 Poor': [0, 1, 0, 1],
-    ...     '5 Very poor': [0, 0, 1, 0],
-    ...     '6 Dont Know': [1, 1, 0, 0],
+    ...     'Very Good': [10, 5, 8, 3],
+    ...     'Good': [3, 2, 4, 1],
+    ...     'Neither good nor poor': [1, 0, 1, 0],
+    ...     'Poor': [0, 1, 0, 1],
+    ...     'Very poor': [0, 0, 1, 0],
+    ...     'Dont Know': [1, 1, 0, 0],
     ...     'Total Responses': [15, 9, 14, 5],
     ...     'Total Eligible': [100, 50, 80, 30]
     ... })
@@ -661,12 +659,12 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     # Edge case: Only NHS providers
     >>> df_nhs_only = pd.DataFrame({
     ...     'ICB_Code': ['ABC', 'DEF'],
-    ...     '1 Very Good': [10, 5],
-    ...     '2 Good': [3, 2],
-    ...     '3 Neither good nor poor': [1, 0],
-    ...     '4 Poor': [0, 1],
-    ...     '5 Very poor': [0, 0],
-    ...     '6 Dont Know': [1, 1],
+    ...     'Very Good': [10, 5],
+    ...     'Good': [3, 2],
+    ...     'Neither good nor poor': [1, 0],
+    ...     'Poor': [0, 1],
+    ...     'Very poor': [0, 0],
+    ...     'Dont Know': [1, 1],
     ...     'Total Responses': [15, 9],
     ...     'Total Eligible': [100, 50]
     ... })
@@ -679,12 +677,12 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     # Edge case: Only IS1 providers
     >>> df_is1_only = pd.DataFrame({
     ...     'ICB_Code': ['IS1', 'IS1'],
-    ...     '1 Very Good': [8, 3],
-    ...     '2 Good': [4, 1],
-    ...     '3 Neither good nor poor': [1, 0],
-    ...     '4 Poor': [0, 1],
-    ...     '5 Very poor': [1, 0],
-    ...     '6 Dont Know': [0, 0],
+    ...     'Very Good': [8, 3],
+    ...     'Good': [4, 1],
+    ...     'Neither good nor poor': [1, 0],
+    ...     'Poor': [0, 1],
+    ...     'Very poor': [1, 0],
+    ...     'Dont Know': [0, 0],
     ...     'Total Responses': [14, 5],
     ...     'Total Eligible': [80, 30]
     ... })
@@ -695,7 +693,7 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     2
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['ICB_Code', '1 Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'Very Good', 'Total Responses'])
     >>> result_df_empty, counts_empty = aggregate_to_national(df_empty)
     >>> counts_empty['nhs_count']
     0
@@ -709,10 +707,24 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     if "ICB_Code" not in df.columns:
         raise KeyError("DataFrame must contain 'ICB_Code' column")
 
-    # Count organizations before transformation
-    nhs_count = df[df["ICB_Code"] != "IS1"].shape[0]
-    is1_count = df[df["ICB_Code"] == "IS1"].shape[0]
-    total_count = df.shape[0]
+    # Count organisations before transformation
+    # Count how many entries contai 'NHS TRUST' or 'NHS FOUNDATION TRUST' in Trust_Name
+    nhs_count = (
+        df["Trust_Name"]
+        .apply(
+            lambda x: isinstance(x, str) and "NHS" in x.upper() and "TRUST" in x.upper()
+        )
+        .sum()
+    )
+    is1_count = (
+        df["Trust_Name"]
+        .apply(
+            lambda x: isinstance(x, str)
+            and not ("NHS" in x.upper() and "TRUST" in x.upper())
+        )
+        .sum()
+    )
+    total_count = len(df)
 
     org_counts = {
         "nhs_count": nhs_count,
@@ -722,8 +734,10 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     # Create working copy and add Submitter_Type
     work_df = df.copy()
-    work_df["Submitter_Type"] = work_df["ICB_Code"].apply(
-        lambda x: "IS1" if x == "IS1" else "NHS"
+    work_df["Submitter_Type"] = work_df["Trust_Name"].apply(
+        lambda x: "NHS"
+        if "NHS" in str(x).upper() and "TRUST" in str(x).upper()
+        else "IS1"
     )
 
     # Determine which columns to sum
@@ -743,14 +757,14 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         agg_df = pd.concat([total_row, agg_df], ignore_index=True)
 
     # Recalculate percentages
-    if all(col in agg_df.columns for col in ["1 Very Good", "2 Good", "Total Responses"]):
+    if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
         agg_df["Percentage_Positive"] = (
-            (agg_df["1 Very Good"] + agg_df["2 Good"]) / agg_df["Total Responses"]
+            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
         ).round(4)
 
-    if all(col in agg_df.columns for col in ["4 Poor", "5 Very poor", "Total Responses"]):
+    if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
         agg_df["Percentage_Negative"] = (
-            (agg_df["4 Poor"] + agg_df["5 Very poor"]) / agg_df["Total Responses"]
+            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
         ).round(4)
 
     return agg_df, org_counts
