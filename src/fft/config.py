@@ -156,33 +156,6 @@ COLUMNS_TO_REMOVE = {
     # Add ae, ambulance later
 }
 
-# =============================================================================
-# VALIDATION RULES
-# =============================================================================
-
-VALIDATION_RULES = {
-    "inpatient": {
-        "column_lengths": {
-            "Yearnumber": [7],
-            "Org code": [3, 5],
-            "Parent org code": [3],
-        },
-        "numeric_columns": {
-            "int": [
-                "1 Very Good",
-                "2 Good",
-                "3 Neither good nor poor",
-                "4 Poor",
-                "5 Very poor",
-                "6 Dont Know",
-                "Total Responses",
-                "Total Eligible",
-            ],
-            "float": ["Prop_Pos", "Prop_Neg"],
-        },
-    },
-    # Add ae, ambulance later
-}
 
 # =============================================================================
 # AGGREGATION COLUMNS

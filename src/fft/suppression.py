@@ -409,12 +409,12 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
     >>> from src.fft.suppression import suppress_values
     >>> df = pd.DataFrame({
     ...     'ICB_Code': ['A', 'B', 'C'],
-    ...     '1 Very Good': [10, 3, 50],
-    ...     '2 Good': [5, 1, 20],
-    ...     '3 Neither good nor poor': [2, 0, 10],
-    ...     '4 Poor': [1, 1, 5],
-    ...     '5 Very poor': [0, 0, 2],
-    ...     '6 Dont Know': [1, 0, 3],
+    ...     'Very Good': [10, 3, 50],
+    ...     'Good': [5, 1, 20],
+    ...     'Neither good nor poor': [2, 0, 10],
+    ...     'Poor': [1, 1, 5],
+    ...     'Very poor': [0, 0, 2],
+    ...     'Dont Know': [1, 0, 3],
     ...     'Percentage_Positive': [0.79, 0.80, 0.78],
     ...     'Percentage_Negative': [0.05, 0.20, 0.08],
     ...     'First_Level_Suppression': [0, 1, 0],
@@ -422,20 +422,20 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
     ...     'Total Responses': [19, 5, 90]
     ... })
     >>> result = suppress_values(df)
-    >>> result.loc[0, '1 Very Good']
+    >>> result.loc[0, 'Very Good']
     '*'
     >>> result.loc[0, 'Percentage_Positive']
     0.79
-    >>> result.loc[1, '1 Very Good']
+    >>> result.loc[1, 'Very Good']
     '*'
     >>> result.loc[1, 'Percentage_Positive']
     '*'
-    >>> result.loc[2, '1 Very Good']
+    >>> result.loc[2, 'Very Good']
     50
 
     # Edge case: No suppression columns
     >>> df_no_suppress = pd.DataFrame({
-    ...     '1 Very Good': [10],
+    ...     'Very Good': [10],
     ...     'Percentage_Positive': [0.8]
     ... })
     >>> suppress_values(df_no_suppress)
@@ -445,12 +445,12 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
 
     # Edge case: All values suppressed
     >>> df_all = pd.DataFrame({
-    ...     '1 Very Good': [3, 2],
+    ...     'Very Good': [3, 2],
     ...     'Percentage_Positive': [0.8, 0.7],
     ...     'First_Level_Suppression': [1, 1]
     ... })
     >>> result_all = suppress_values(df_all)
-    >>> list(result_all['1 Very Good'])
+    >>> list(result_all['Very Good'])
     ['*', '*']
     >>> list(result_all['Percentage_Positive'])
     ['*', '*']
