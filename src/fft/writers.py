@@ -452,7 +452,20 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     >>> wb['ICB'].cell(row=15, column=5).number_format
     '0%'
 
-    # Edge case: Unknown service type
+    # Edge case: Missing sheet in workbook (should skip gracefully)
+    >>> from src.fft.config import PERCENTAGE_COLUMN_CONFIG
+    >>> original_config = PERCENTAGE_COLUMN_CONFIG['inpatient'].copy()
+    >>> PERCENTAGE_COLUMN_CONFIG['inpatient']['NonExistentSheet'] = [5]
+    >>> format_percentage_columns(wb, 'inpatient')  # Should not raise error
+    >>> PERCENTAGE_COLUMN_CONFIG['inpatient'] = original_config
+
+    # Edge case: Cell contains non-numeric value
+    >>> wb['ICB'].cell(row=16, column=5).value = "text"
+    >>> format_percentage_columns(wb, 'inpatient')  # Should still format other cells
+    >>> wb['ICB'].cell(row=15, column=5).number_format  # Verify previous cell still formatted
+    '0%'
+
+    # Error case: Unknown service type
     >>> format_percentage_columns(wb, 'unknown')
     Traceback (most recent call last):
         ...
@@ -503,13 +516,14 @@ def save_output(workbook: Workbook, service_type: str, fft_period: str) -> Path:
     >>> output_path.exists()
     True
 
-    # Edge case: Unknown service type
-    >>> save_output(wb, 'unknown', 'Aug-24')
-    Traceback (most recent call last):
-        ...
-    KeyError: "Unknown service type: 'unknown'"
+    # Edge case: FFT period with complex format
+    >>> output_path = save_output(wb, 'inpatient', 'Dec-2024')
+    >>> output_path.name
+    'FFT-inpatient-data-Dec-2024.xlsm'
+    >>> output_path.exists()
+    True
 
-    # Edge case: Outputs directory creation
+    # Edge case: Outputs directory creation when missing
     >>> from src.fft.config import OUTPUTS_DIR
     >>> import shutil
     >>> if OUTPUTS_DIR.exists():
@@ -517,6 +531,12 @@ def save_output(workbook: Workbook, service_type: str, fft_period: str) -> Path:
     >>> output_path = save_output(wb, 'inpatient', 'Sep-24')
     >>> output_path.exists()
     True
+
+    # Error case: Unknown service type
+    >>> save_output(wb, 'unknown', 'Aug-24')
+    Traceback (most recent call last):
+        ...
+    KeyError: "Unknown service type: 'unknown'"
     """
     if service_type not in TEMPLATE_CONFIG:
         raise KeyError(f"Unknown service type: '{service_type}'")

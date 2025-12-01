@@ -26,7 +26,31 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
     >>> isinstance(data["Parent & Self Trusts - Collecti"], pd.DataFrame)
     True
 
-    # Edge case: Non-existent file
+    # Edge case: Excel file with minimal sheets (still valid)
+    >>> import tempfile
+    >>> import os
+    >>> with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+    ...     simple_df = pd.DataFrame({'A': [1, 2], 'B': [3, 4]})
+    ...     simple_df.to_excel(tmp.name, sheet_name='SingleSheet', index=False)
+    ...     minimal_data = load_raw_data(Path(tmp.name))
+    ...     os.unlink(tmp.name)
+    >>> isinstance(minimal_data, dict)
+    True
+    >>> len(minimal_data) >= 1  # At least one sheet loaded
+    True
+
+    # Edge case: Empty Excel file structure
+    >>> with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+    ...     empty_df = pd.DataFrame()
+    ...     empty_df.to_excel(tmp.name, sheet_name='EmptySheet', index=False)
+    ...     empty_data = load_raw_data(Path(tmp.name))
+    ...     os.unlink(tmp.name)
+    >>> 'EmptySheet' in empty_data
+    True
+    >>> len(empty_data['EmptySheet'])
+    0
+
+    # Error case: Non-existent file
     >>> load_raw_data(Path("data/inputs/raw/non_existent_file.xlsx"))
     Traceback (most recent call last):
         ...
@@ -57,11 +81,15 @@ def identify_service_type(filename: str) -> str:
     >>> identify_service_type("FFT_Ambulance_V1_March.xlsx")
     'ambulance'
 
-    # Edge case: Mixed case
-    >>> identify_service_type("fft_ip_v1_april.xlsx")
+    # Edge case: Abbreviated service name (ip vs inpatient)
+    >>> identify_service_type("FFT_IP_V1_May.xlsx")
     'inpatient'
 
-    # Error case
+    # Edge case: Mixed case filename
+    >>> identify_service_type("fft_ambulance_v1_april.xlsx")
+    'ambulance'
+
+    # Error case: Unknown service type
     >>> identify_service_type("FFT_Unknown_V1_May.xlsx")
     Traceback (most recent call last):
         ...
@@ -98,12 +126,19 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     >>> len(files) <= 2
     True
 
-    # Edge case: No files found
+    # Edge case: Request more files than available
+    >>> files = find_latest_files("inpatient", n=100)
+    >>> isinstance(files, list)
+    True
+    >>> len(files) <= 100  # Returns only what's available
+    True
+
+    # Edge case: No files found for service type
     >>> files = find_latest_files("ae", n=2)
     >>> files == []
     True
 
-    # Error case
+    # Error case: Unknown service type
     >>> find_latest_files("unknown_service", n=2)
     Traceback (most recent call last):
         ...
@@ -135,7 +170,22 @@ def load_rolling_totals(service_type: str) -> pd.DataFrame:
     >>> isinstance(df, pd.DataFrame)
     True
 
-    # Edge case: Non-existent file
+    # Edge case: Service type with plural filename handling
+    >>> df_inpatient = load_rolling_totals("inpatient")
+    >>> isinstance(df_inpatient, pd.DataFrame)  # Should handle inpatients.csv fallback
+    True
+
+    # Edge case: Empty rolling totals file (CSV with headers but no data)
+    >>> import os
+    >>> from src.fft.config import ROLLING_TOTALS_DIR
+    >>> test_file = ROLLING_TOTALS_DIR / "Monthly Rolling Totals test.csv"
+    >>> _ = test_file.write_text("Year,Month,Total\\n")  # CSV with headers but no data
+    >>> df_empty = load_rolling_totals("test")
+    >>> len(df_empty) == 0
+    True
+    >>> test_file.unlink()  # Clean up
+
+    # Error case: Non-existent service type
     >>> load_rolling_totals("unknown_service")
     Traceback (most recent call last):
         ...

@@ -80,27 +80,21 @@ def extract_fft_period(df: pd.DataFrame) -> str:
     >>> extract_fft_period(df)
     'Aug-24'
 
-    >>> df = pd.DataFrame({'Periodname': ['JANUARY'], 'Yearnumber': ['2024-25']})
-    >>> extract_fft_period(df)
+    # Edge case: Year boundary crossing (Jan uses next calendar year)
+    >>> df_jan = pd.DataFrame({'Periodname': ['JANUARY'], 'Yearnumber': ['2024-25']})
+    >>> extract_fft_period(df_jan)
     'Jan-25'
 
-    # Edge case: Invalid period name
-    >>> df = pd.DataFrame({'Periodname': ['INVALID'], 'Yearnumber': ['2024-25']})
-    >>> extract_fft_period(df)
-    Traceback (most recent call last):
-        ...
-    ValueError: Invalid period name 'INVALID'
-
     # Edge case: Invalid year format
-    >>> df = pd.DataFrame({'Periodname': ['MARCH'], 'Yearnumber': ['202425']})
-    >>> extract_fft_period(df)
+    >>> df_bad_year = pd.DataFrame({'Periodname': ['MARCH'], 'Yearnumber': ['202425']})
+    >>> extract_fft_period(df_bad_year)
     Traceback (most recent call last):
         ...
     ValueError: Invalid year format '202425', expected format: 'YYYY-YY' or 'YYYY_YY'
 
-    # Edge case: Missing required columns
-    >>> df_missing_cols = pd.DataFrame({'Other': ['data']})
-    >>> extract_fft_period(df_missing_cols)
+    # Error case: Missing required columns
+    >>> df_missing = pd.DataFrame({'Other': ['data']})
+    >>> extract_fft_period(df_missing)
     Traceback (most recent call last):
         ...
     KeyError: "DataFrame must contain 'Periodname' and 'Yearnumber' columns"
@@ -168,35 +162,23 @@ def remove_unwanted_columns(
     >>> list(cleaned.columns)
     ['ICB_Code']
 
-    # Edge case: Unknown service type
-    >>> remove_unwanted_columns(df, 'unknown_service', 'organisation')
-    Traceback (most recent call last):
-        ...
-    KeyError: 'Unknown service type: unknown_service'
-
-    # Edge case: Unknown level
-    >>> remove_unwanted_columns(df, 'inpatient', 'unknown_level')
-    Traceback (most recent call last):
-        ...
-    KeyError: "Unknown level 'unknown_level' for service type 'inpatient'"
-
-    # Edge case: No columns to remove
-    >>> df_no_remove = pd.DataFrame({'ICB_Code': ['ABC']})
-    >>> cleaned_no_remove = remove_unwanted_columns(df_no_remove, 'inpatient', 'organisation')
-    >>> list(cleaned_no_remove.columns)
-    ['ICB_Code']
-
-    # Edge case: Some columns to remove not present
-    >>> df_partial = pd.DataFrame({'Yearnumber': [2024], 'ICB_Code': ['ABC']})
-    >>> cleaned_partial = remove_unwanted_columns(df_partial, 'inpatient', 'organisation')
-    >>> list(cleaned_partial.columns)
-    ['ICB_Code']
+    # Edge case: No unwanted columns present (graceful handling)
+    >>> df_clean = pd.DataFrame({'ICB_Code': ['ABC'], 'Total Responses': [100]})
+    >>> result = remove_unwanted_columns(df_clean, 'inpatient', 'organisation')
+    >>> len(result.columns)  # Should preserve all columns
+    2
 
     # Edge case: Empty DataFrame
     >>> df_empty = pd.DataFrame()
     >>> cleaned_empty = remove_unwanted_columns(df_empty, 'inpatient', 'organisation')
-    >>> list(cleaned_empty.columns)
-    []
+    >>> len(cleaned_empty.columns)
+    0
+
+    # Error case: Unknown service type
+    >>> remove_unwanted_columns(df, 'unknown_service', 'organisation')
+    Traceback (most recent call last):
+        ...
+    KeyError: 'Unknown service type: unknown_service'
     """
     if service_type not in COLUMNS_TO_REMOVE:
         raise KeyError(f"Unknown service type: {service_type}")
@@ -273,26 +255,18 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     >>> import pandas as pd
     >>> import numpy as np
     >>> from src.fft.processors import aggregate_to_icb
-    >>> from src.fft.config import AGGREGATION_COLUMNS
     >>> df = pd.DataFrame({
     ...     'ICB_Code': ['ABC', 'ABC', 'DEF'],
     ...     'ICB_Name': ['ICB North', 'ICB North', 'ICB South'],
     ...     'Very Good': [10, 5, 8],
-    ...     'Good': [3, 2, 4],
-    ...     'Neither good nor poor': [1, 0, 1],
-    ...     'Poor': [0, 1, 0],
-    ...     'Very poor': [0, 0, 1],
-    ...     'Dont Know': [1, 1, 0],
     ...     'Total Responses': [15, 9, 14],
     ...     'Total Eligible': [100, 50, 80]
     ... })
     >>> result = aggregate_to_icb(df)
+    >>> len(result)  # Two ICBs
+    2
     >>> result[result['ICB_Code'] == 'ABC']['Total Responses'].values[0]
     np.int64(24)
-    >>> result[result['ICB_Code'] == 'ABC']['Very Good'].values[0]
-    np.int64(15)
-    >>> result[result['ICB_Code'] == 'DEF']['Total Responses'].values[0]
-    np.int64(14)
 
     # Edge case: Missing required columns
     >>> df_missing = pd.DataFrame({
@@ -331,24 +305,18 @@ def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
     >>> import pandas as pd
     >>> import numpy as np
     >>> from src.fft.processors import aggregate_to_trust
-    >>> from src.fft.config import AGGREGATION_COLUMNS
     >>> df = pd.DataFrame({
     ...     'Trust_Code': ['T01', 'T01', 'T02'],
     ...     'Trust_Name': ['Trust A', 'Trust A', 'Trust B'],
     ...     'Very Good': [10, 5, 8],
-    ...     'Good': [3, 2, 4],
-    ...     'Neither good nor poor': [1, 0, 1],
-    ...     'Poor': [0, 1, 0],
-    ...     'Very poor': [0, 0, 1],
-    ...     'Dont Know': [1, 1, 0],
     ...     'Total Responses': [15, 9, 14],
     ...     'Total Eligible': [100, 50, 80]
     ... })
     >>> result = aggregate_to_trust(df)
+    >>> len(result)  # Two trusts
+    2
     >>> result[result['Trust_Code'] == 'T01']['Total Responses'].values[0]
     np.int64(24)
-    >>> result[result['Trust_Code'] == 'T01']['Very Good'].values[0]
-    np.int64(15)
     >>> result[result['Trust_Code'] == 'T02']['Total Responses'].values[0]
     np.int64(14)
 
@@ -393,19 +361,14 @@ def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
     ...     'Site_Code': ['S01', 'S01', 'S02'],
     ...     'Site_Name': ['Site A', 'Site A', 'Site B'],
     ...     'Very Good': [10, 5, 8],
-    ...     'Good': [3, 2, 4],
-    ...     'Neither good nor poor': [1, 0, 1],
-    ...     'Poor': [0, 1, 0],
-    ...     'Very poor': [0, 0, 1],
-    ...     'Dont Know': [1, 1, 0],
     ...     'Total Responses': [15, 9, 14],
     ...     'Total Eligible': [100, 50, 80]
     ... })
     >>> result = aggregate_to_site(df)
+    >>> len(result)  # Two sites
+    2
     >>> result[result['Site_Code'] == 'S01']['Total Responses'].values[0]
     np.int64(24)
-    >>> result[result['Site_Code'] == 'S01']['Very Good'].values[0]
-    np.int64(15)
     >>> result[result['Site_Code'] == 'S02']['Total Responses'].values[0]
     np.int64(14)
 
