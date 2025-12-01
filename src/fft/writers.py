@@ -345,9 +345,9 @@ def write_england_totals(
     >>> counts = {'total_count': 150, 'nhs_count': 130, 'is1_count': 20}
     >>> write_england_totals(wb, 'inpatient', nat_df, counts)
     >>> wb['ICB'].cell(row=12, column=3).value
-    1000
+    np.int64(1000)
     >>> wb['ICB'].cell(row=12, column=5).value
-    0.95
+    np.float64(0.95)
 
     # Edge case: Missing Submitter_Type
     >>> bad_df = pd.DataFrame({'Total Responses': [1000]})

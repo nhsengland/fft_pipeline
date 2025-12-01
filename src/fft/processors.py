@@ -8,7 +8,6 @@ from src.fft.config import (
     COLUMN_MAPS,
     MONTH_ABBREV,
     COLUMNS_TO_REMOVE,
-    VALIDATION_RULES,
     AGGREGATION_COLUMNS,
 )
 
@@ -211,178 +210,6 @@ def remove_unwanted_columns(
     return df.drop(columns=cols_to_drop)
 
 
-# %%
-def validate_column_lengths(df: pd.DataFrame, service_type: str) -> pd.DataFrame:
-    """Validate that specified columns contain values of expected lengths.
-
-    Args:
-        df: DataFrame to validate
-        service_type: 'inpatient', 'ae', or 'ambulance'
-
-    Returns:
-        The same DataFrame (unchanged) if validation passes
-
-    Raises:
-        KeyError: If service_type is invalid or expected column is missing
-        ValueError: If any value has invalid length
-
-    >>> import pandas as pd
-    >>> from src.fft.processors import validate_column_lengths
-    >>> from src.fft.config import VALIDATION_RULES
-    >>> df = pd.DataFrame({
-    ...     'Yearnumber': ['2024-25'],
-    ...     'Org code': [123],
-    ...     'Parent org code': [456]
-    ... })
-    >>> validate_column_lengths(df, 'inpatient')
-      Yearnumber  Org code  Parent org code
-    0    2024-25       123              456
-
-    # Edge case: Unknown service type
-    >>> df_bad = pd.DataFrame({'Yearnumber': ['2024-25']})
-    >>> validate_column_lengths(df_bad, 'unknown_service')
-    Traceback (most recent call last):
-        ...
-    KeyError: 'Unknown service type: unknown_service'
-
-    # Edge case: Missing column
-    >>> df_missing = pd.DataFrame({'Org code': ['123']})
-    >>> validate_column_lengths(df_missing, 'inpatient')
-    Traceback (most recent call last):
-        ...
-    KeyError: "Column 'Yearnumber' not found in DataFrame"
-
-    # Edge case: Invalid length
-    >>> df_invalid = pd.DataFrame({'Yearnumber': ['2024', '2023-24'], 'Org code': ['12', '12345']})
-    >>> validate_column_lengths(df_invalid, 'inpatient')
-    Traceback (most recent call last):
-        ...
-    ValueError: Row 0 in column 'Yearnumber' has invalid length 4, expected [7]
-
-    # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame({'Yearnumber': [], 'Org code': []})
-    >>> validate_column_lengths(df_empty, 'inpatient')
-    Traceback (most recent call last):
-        ...
-    KeyError: "Column 'Parent org code' not found in DataFrame"
-    """
-    if service_type not in VALIDATION_RULES:
-        raise KeyError(f"Unknown service type: {service_type}")
-
-    rules = VALIDATION_RULES[service_type]["column_lengths"]
-
-    for column, expected_lengths in rules.items():
-        if column not in df.columns:
-            raise KeyError(f"Column '{column}' not found in DataFrame")
-
-        for idx, value in df[column].items():
-            value_len = len(str(value))
-            if value_len not in expected_lengths:
-                raise ValueError(
-                    f"Row {idx} in column '{column}' has invalid length {value_len}, "
-                    f"expected {expected_lengths}"
-                )
-
-    return df
-
-
-# %%
-def validate_numeric_columns(df: pd.DataFrame, service_type: str) -> pd.DataFrame:
-    """Validate that specified columns contain correct numeric types.
-
-    Args:
-        df: DataFrame to validate
-        service_type: 'inpatient', 'ae', or 'ambulance'
-
-    Returns:
-        The same DataFrame (unchanged) if validation passes
-
-    Raises:
-        KeyError: If service_type is invalid or expected column is missing
-        TypeError: If any value has incorrect type
-
-    >>> import pandas as pd
-    >>> import numpy as np
-    >>> from src.fft.processors import validate_numeric_columns
-    >>> from src.fft.config import VALIDATION_RULES
-    >>> df = pd.DataFrame({
-    ...     'Very Good': [10, 20],
-    ...     'Good': [5, 15],
-    ...     'Neither good nor poor': [2, 3],
-    ...     'Poor': [1, 0],
-    ...     'Very poor': [0, 1],
-    ...     'Dont Know': [10, 2],
-    ...     'Total Responses': [28, 41],
-    ...     'Total Eligible': [100, 150],
-    ...     'Prop_Pos': [0.95, 0.87],
-    ...     'Prop_Neg': [0.02, 0.01]
-    ... })
-    >>> result = validate_numeric_columns(df, 'inpatient')
-    >>> result.shape
-    (2, 10)
-    >>> list(result.columns)
-    ['Very Good', 'Good', 'Neither good nor poor', 'Poor', 'Very poor', 'Dont Know', 'Total Responses', 'Total Eligible', 'Prop_Pos', 'Prop_Neg']
-
-    # Edge case: Unknown service type
-    >>> df_bad = pd.DataFrame({'Very Good': [5.5]})
-    >>> validate_numeric_columns(df_bad, 'unknown_service')
-    Traceback (most recent call last):
-        ...
-    KeyError: 'Unknown service type: unknown_service'
-
-    # Edge case: Missing column
-    >>> df_missing = pd.DataFrame({'Good': [5.5]})
-    >>> validate_numeric_columns(df_missing, 'inpatient')
-    Traceback (most recent call last):
-        ...
-    KeyError: "Column 'Very Good' not found in DataFrame"
-
-    # Edge case: Incorrect type
-    >>> df_invalid = pd.DataFrame({'Very Good': [10, 'twenty'], 'Good': [5.5, 15.0]})
-    >>> validate_numeric_columns(df_invalid, 'inpatient')
-    Traceback (most recent call last):
-        ...
-    TypeError: Row 1 in column 'Very Good' contains non-integer value
-
-    # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame({
-    ...     'Very Good': [], 'Good': [], 'Neither good nor poor': [],
-    ...     'Poor': [], 'Very poor': [], 'Dont Know': [],
-    ...     'Total Responses': [], 'Total Eligible': [],
-    ...     'Prop_Pos': [], 'Prop_Neg': []
-    ... })
-    >>> result = validate_numeric_columns(df_empty, 'inpatient')
-    >>> len(result)
-    0
-    """
-    if service_type not in VALIDATION_RULES:
-        raise KeyError(f"Unknown service type: {service_type}")
-
-    numeric_rules = VALIDATION_RULES[service_type]["numeric_columns"]
-
-    # Check integer columns
-    for column in numeric_rules.get("int", []):
-        if column not in df.columns:
-            raise KeyError(f"Column '{column}' not found in DataFrame")
-
-        for idx, value in df[column].items():
-            if not isinstance(value, (int, np.integer)):
-                raise TypeError(
-                    f"Row {idx} in column '{column}' contains non-integer value"
-                )
-
-    # Check float columns
-    for column in numeric_rules.get("float", []):
-        if column not in df.columns:
-            raise KeyError(f"Column '{column}' not found in DataFrame")
-
-        for idx, value in df[column].items():
-            if not isinstance(value, (float, int, np.floating, np.integer)):
-                raise TypeError(
-                    f"Row {idx} in column '{column}' contains non-float value"
-                )
-
-    return df
 
 
 # %% Aggregation
@@ -626,6 +453,7 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     >>> df = pd.DataFrame({
     ...     'ICB_Code': ['ABC', 'DEF', 'IS1', 'IS1'],
     ...     'Trust_Code': ['T01', 'T02', 'T03', 'T04'],
+    ...     'Trust_Name': ['NHS Foundation Trust', 'NHS Trust', 'Independent Sector', 'Private Provider'],
     ...     'Very Good': [10, 5, 8, 3],
     ...     'Good': [3, 2, 4, 1],
     ...     'Neither good nor poor': [1, 0, 1, 0],
@@ -637,9 +465,9 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     ... })
     >>> result_df, counts = aggregate_to_national(df)
     >>> counts['nhs_count']
-    2
+    np.int64(2)
     >>> counts['is1_count']
-    2
+    np.int64(2)
     >>> counts['total_count']
     4
     >>> result_df[result_df['Submitter_Type'] == 'Total']['Total Responses'].values[0]
@@ -659,6 +487,7 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     # Edge case: Only NHS providers
     >>> df_nhs_only = pd.DataFrame({
     ...     'ICB_Code': ['ABC', 'DEF'],
+    ...     'Trust_Name': ['NHS Foundation Trust', 'NHS Trust'],
     ...     'Very Good': [10, 5],
     ...     'Good': [3, 2],
     ...     'Neither good nor poor': [1, 0],
@@ -670,13 +499,14 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     ... })
     >>> result_df_nhs, counts_nhs = aggregate_to_national(df_nhs_only)
     >>> counts_nhs['is1_count']
-    0
+    np.int64(0)
     >>> len(result_df_nhs)
     2
 
     # Edge case: Only IS1 providers
     >>> df_is1_only = pd.DataFrame({
     ...     'ICB_Code': ['IS1', 'IS1'],
+    ...     'Trust_Name': ['Independent Sector', 'Private Provider'],
     ...     'Very Good': [8, 3],
     ...     'Good': [4, 1],
     ...     'Neither good nor poor': [1, 0],
@@ -688,12 +518,12 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     ... })
     >>> result_df_is1, counts_is1 = aggregate_to_national(df_is1_only)
     >>> counts_is1['nhs_count']
-    0
+    np.int64(0)
     >>> len(result_df_is1)
     2
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'Trust_Name', 'Very Good', 'Total Responses'])
     >>> result_df_empty, counts_empty = aggregate_to_national(df_empty)
     >>> counts_empty['nhs_count']
     0
