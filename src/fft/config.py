@@ -188,14 +188,15 @@ VALIDATION_RULES = {
 # AGGREGATION COLUMNS
 # =============================================================================
 
+
 AGGREGATION_COLUMNS = {
     "likert_responses": [
-        "1 Very Good",
-        "2 Good",
-        "3 Neither good nor poor",
-        "4 Poor",
-        "5 Very poor",
-        "6 Dont Know",
+        "Very Good",
+        "Good",
+        "Neither Good nor Poor",
+        "Poor",
+        "Very Poor",
+        "Don't Know",
     ],
     "totals": ["Total Responses", "Total Eligible"],
     "collection_modes": [
@@ -208,6 +209,93 @@ AGGREGATION_COLUMNS = {
         "Mode Online",
         "Mode Other",
     ],
+}
+
+# =============================================================================
+# OUTPUT COLUMNS
+# =============================================================================
+
+# Output columns per sheet (in order)
+OUTPUT_COLUMNS = {
+    "inpatient": {
+        "ICB": [
+            "ICB_Code",
+            "ICB_Name",
+            "Total Responses",
+            "Total Eligible",
+            "Percentage_Positive",
+            "Percentage_Negative",
+            "Very Good",
+            "Good",
+            "Neither Good nor Poor",
+            "Poor",
+            "Very Poor",
+            "Don't Know",
+        ],
+        "Trusts": [
+            "ICB_Code",
+            "ICB_Name",
+            "Trust_Code",
+            "Trust_Name",
+            "Total Responses",
+            "Total Eligible",
+            "Percentage_Positive",
+            "Percentage_Negative",
+            "Very Good",
+            "Good",
+            "Neither Good nor Poor",
+            "Poor",
+            "Very Poor",
+            "Don't Know",
+            "Mode SMS",
+            "Mode Electronic Discharge",
+            "Mode Electronic Home",
+            "Mode Paper Discharge",
+            "Mode Paper Home",
+            "Mode Telephone",
+            "Mode Online",
+            "Mode Other",
+        ],
+        "Sites": [
+            "ICB_Code",
+            "ICB_Name",
+            "Trust_Code",
+            "Trust_Name",
+            "Site_Code",
+            "Site_Name",
+            "Total Responses",
+            "Total Eligible",
+            "Percentage_Positive",
+            "Percentage_Negative",
+            "Very Good",
+            "Good",
+            "Neither Good nor Poor",
+            "Poor",
+            "Very Poor",
+            "Don't Know",
+        ],
+        "Wards": [
+            "ICB_Code",
+            "ICB_Name",
+            "Trust_Code",
+            "Trust_Name",
+            "Site_Code",
+            "Site_Name",
+            "Ward_Name",
+            "Total Responses",
+            "Total Eligible",
+            "Percentage_Positive",
+            "Percentage_Negative",
+            "Very Good",
+            "Good",
+            "Neither Good nor Poor",
+            "Poor",
+            "Very Poor",
+            "Don't Know",
+            "First Speciality",
+            "Second Speciality",
+        ],
+    }
 }
 
 # =============================================================================
@@ -229,12 +317,12 @@ TEMPLATE_CONFIG = {
         "sheets": {
             "icb": {
                 "sheet_name": "ICB",
-                "name_column": "ICB Name",
+                "name_column": "ICB_Name",
                 "columns": [*ICB_COLS, *TOTALS_COLS, *PERCENTAGE_COLS, *LIKERT_COLS],
             },
-            "trust": {
+            "organisation": {
                 "sheet_name": "Trusts",
-                "name_column": "Trust Name",
+                "name_column": "Trust_Name",
                 "columns": [
                     *ICB_COLS,
                     *TRUST_COLS,
@@ -246,7 +334,7 @@ TEMPLATE_CONFIG = {
             },
             "site": {
                 "sheet_name": "Sites",
-                "name_column": "Site Name",
+                "name_column": "Site_Name",
                 "columns": [
                     *ICB_COLS,
                     *TRUST_COLS,
@@ -258,7 +346,7 @@ TEMPLATE_CONFIG = {
             },
             "ward": {
                 "sheet_name": "Wards",
-                "name_column": "Ward Name",
+                "name_column": "Ward_Name",
                 "columns": [
                     *ICB_COLS,
                     *TRUST_COLS,

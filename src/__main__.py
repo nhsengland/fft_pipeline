@@ -4,7 +4,12 @@ import argparse
 import logging
 import sys
 
-from src.fft.config import PROCESSING_LEVELS, TEMPLATE_CONFIG, SERVICE_TYPES
+from src.fft.config import (
+    PROCESSING_LEVELS,
+    TEMPLATE_CONFIG,
+    SERVICE_TYPES,
+    OUTPUT_COLUMNS,
+)
 from src.fft.loaders import find_latest_files, load_raw_data
 from src.fft.processors import (
     extract_fft_period,
@@ -39,6 +44,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# TODO: Can I remove this function?
+# %%
 def process_level(df, service_type, level, parent_df=None):
     """Process a single geographic level with suppression.
 
@@ -94,24 +101,21 @@ def process_level(df, service_type, level, parent_df=None):
     df["Suppression_Required"] = df[suppression_cols].max(axis=1)
 
     # Apply suppression (replace values with *)
-    df = suppress_values(df)
+    # df = suppress_values(df)
 
     return df
 
 
+# %%
 def run_pipeline(service_type: str) -> None:
-    """Run the full FFT pipeline for a service type.
-
-    Args:
-        service_type: 'inpatient', 'ae', or 'ambulance'
-    """
+    """Run the full FFT pipeline for a service type."""
     logger.info(f"Starting FFT pipeline for {service_type}")
 
     processing_config = PROCESSING_LEVELS[service_type]
     levels = processing_config["levels"]
     sheet_mapping = processing_config["sheet_mapping"]
 
-    # Step 1: Load latest files
+    # Step 1: Find latest files
     logger.info("Loading latest raw data files...")
     files = find_latest_files(service_type, n=2)
     if not files:
@@ -123,88 +127,147 @@ def run_pipeline(service_type: str) -> None:
     raw_data = load_raw_data(files[0])
     logger.info(f"Loaded {len(raw_data)} sheets: {list(raw_data.keys())}")
 
-    # Step 3: Extract FFT period from first available sheet
+    # Step 3: Extract FFT period
     first_sheet = list(raw_data.values())[0]
     fft_period = extract_fft_period(first_sheet)
     logger.info(f"FFT Period: {fft_period}")
 
-    # Step 4: Process each level
-    processed_data = {}
-    parent_df = None
-
+    # Step 4: Standardise and clean each level (NO suppression yet)
+    cleaned_data = {}
     for level in levels:
         sheet_name = sheet_mapping.get(level)
         if sheet_name not in raw_data:
             raise KeyError(f"Sheet '{sheet_name}' not found in raw data")
 
+        logger.info(f"Cleaning {level} level...")
         df = raw_data[sheet_name].copy()
-        processed_df = process_level(df, service_type, level, parent_df)
-        processed_data[level] = processed_df
-        parent_df = processed_df  # Pass to next level for cascade
+        df = standardise_column_names(df, service_type, level)
+        df = remove_unwanted_columns(df, service_type, level)
+        cleaned_data[level] = df
 
     # Step 5: Aggregate to ICB level
     logger.info("Aggregating to ICB level...")
-    org_df = processed_data.get("organisation", processed_data[levels[-1]])
+    org_df = cleaned_data["organisation"]
     icb_df = aggregate_to_icb(org_df)
-    icb_df = process_level(icb_df, service_type, "icb")
-    processed_data["icb"] = icb_df
 
     # Step 6: Aggregate to national level
     logger.info("Aggregating to national level...")
     national_df, org_counts = aggregate_to_national(org_df)
     logger.info(f"Organisation counts: {org_counts}")
 
-    # DEBUG: Check what we're generating
-    print("\n=== DEBUG: National DF ===")
-    print(national_df)
-    print("\n=== DEBUG: ICB DF ===")
-    print(icb_df.head())
-    print(f"ICB columns: {list(icb_df.columns)}")
+    # Step 7: Apply suppression to each level (top-down cascade)
+    logger.info("Applying suppression...")
 
-    # Step 7: Load template
+    # ICB level suppression (no parent)
+    icb_df = add_rank_column(icb_df, group_by_col=None)
+    icb_df = apply_first_level_suppression(icb_df)
+    icb_df = apply_second_level_suppression(icb_df, group_by_col=None)
+    icb_df["Suppression_Required"] = (
+        icb_df["First_Level_Suppression"] | icb_df["Second_Level_Suppression"]
+    )
+    icb_suppressed = suppress_values(icb_df.copy())
+
+    # Organisation level suppression (cascade from ICB)
+    org_df = add_rank_column(org_df, group_by_col="ICB_Code")
+    org_df = apply_first_level_suppression(org_df)
+    org_df = apply_second_level_suppression(org_df, group_by_col="ICB_Code")
+    org_df = apply_cascade_suppression(
+        icb_df, org_df, "ICB_Code", "ICB_Code", "Suppression_Required"
+    )
+    org_df["Suppression_Required"] = org_df[
+        ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
+    ].max(axis=1)
+    org_suppressed = suppress_values(org_df.copy())
+
+    # Site level suppression (cascade from Organisation)
+    if "site" in cleaned_data:
+        site_df = cleaned_data["site"]
+        site_df = add_rank_column(site_df, group_by_col="Trust_Code")
+        site_df = apply_first_level_suppression(site_df)
+        site_df = apply_second_level_suppression(site_df, group_by_col="Trust_Code")
+        site_df = apply_cascade_suppression(
+            org_df, site_df, "Trust_Code", "Trust_Code", "Suppression_Required"
+        )
+        site_df["Suppression_Required"] = site_df[
+            ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
+        ].max(axis=1)
+        site_suppressed = suppress_values(site_df.copy())
+
+    # Ward level suppression (cascade from Site)
+    if "ward" in cleaned_data:
+        ward_df = cleaned_data["ward"]
+        ward_df = add_rank_column(ward_df, group_by_col="Site_Code")
+        ward_df = apply_first_level_suppression(ward_df)
+        ward_df = apply_second_level_suppression(ward_df, group_by_col="Site_Code")
+        ward_df = apply_cascade_suppression(
+            site_df, ward_df, "Site_Code", "Site_Code", "Suppression_Required"
+        )
+        ward_df["Suppression_Required"] = ward_df[
+            ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
+        ].max(axis=1)
+        ward_suppressed = suppress_values(ward_df.copy())
+
+    # Step 8: Load template workbook
     logger.info("Loading template...")
     wb = load_template(service_type)
 
-    # Step 8: Write data to sheets
+    # Step 9: Write data to sheets (use SUPPRESSED versions)
+    suppressed_data = {
+        "icb": icb_suppressed,
+        "organisation": org_suppressed,
+    }
+    if "site" in cleaned_data:
+        suppressed_data["site"] = site_suppressed
+    if "ward" in cleaned_data:
+        suppressed_data["ward"] = ward_suppressed
+
     template_config = TEMPLATE_CONFIG[service_type]
     data_start_row = template_config["data_start_row"]
 
-    level_to_sheet = {
-        "icb": "ICB",
-        "organisation": "Trusts",
-        "site": "Sites",
-        "ward": "Wards",
-    }
+    for level, df in suppressed_data.items():
+        sheet_config = template_config["sheets"].get(level)
+        if not sheet_config:
+            continue
 
-    for level, df in processed_data.items():
-        sheet_name = level_to_sheet.get(level)
-        if sheet_name and sheet_name in wb.sheetnames:
+        sheet_name = sheet_config["sheet_name"]
+        if sheet_name in wb.sheetnames:
             logger.info(f"Writing {level} data to {sheet_name}...")
-            write_dataframe_to_sheet(wb, df, sheet_name, data_start_row)
 
-    # Step 9: Write England totals
+            # Filter to only output columns
+            output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
+            available_cols = [col for col in output_cols if col in df.columns]
+            output_df = df[available_cols]
+
+            write_dataframe_to_sheet(wb, output_df, sheet_name, data_start_row)
+
+    # Step 10: Write England totals
     logger.info("Writing England totals...")
     write_england_totals(wb, service_type, national_df, org_counts)
 
-    # Step 10: Write BS lookup data (from ward level or lowest available)
+    # Step 11: Write BS lookup data (use unsuppressed ward data for lookups)
     logger.info("Writing BS lookup data...")
-    lowest_level = levels[0]  # ward for inpatient, site for ae, etc.
-    write_bs_lookup_data(wb, processed_data[lowest_level], service_type)
+    if "ward" in cleaned_data:
+        write_bs_lookup_data(wb, ward_df, service_type)
+    elif "site" in cleaned_data:
+        write_bs_lookup_data(wb, site_df, service_type)
+    else:
+        write_bs_lookup_data(wb, org_df, service_type)
 
-    # Step 11: Update period labels
+    # Step 12: Update period labels
     logger.info("Updating period labels...")
     update_period_labels(wb, service_type, fft_period)
 
-    # Step 12: Format percentage columns
+    # Step 13: Format percentage columns
     logger.info("Formatting percentage columns...")
     format_percentage_columns(wb, service_type)
 
-    # Step 13: Save output
+    # Step 14: Save output
     logger.info("Saving output...")
     output_path = save_output(wb, service_type, fft_period)
     logger.info(f"✓ Output saved to: {output_path}")
 
 
+# %%
 def main():
     """Main entry point for FFT pipeline."""
 

@@ -14,6 +14,7 @@ from src.fft.config import (
     TEMPLATE_CONFIG,
     PERCENTAGE_COLUMN_CONFIG,
     OUTPUTS_DIR,
+    OUTPUT_COLUMNS,
 )
 
 
@@ -93,8 +94,8 @@ def write_dataframe_to_sheet(
     >>> import pandas as pd
     >>> wb = load_template('inpatient')
     >>> df = pd.DataFrame({
-    ...     'ICB Code': ['ABC', 'DEF'],
-    ...     'ICB Name': ['Test ICB 1', 'Test ICB 2'],
+    ...     'ICB_Code': ['ABC', 'DEF'],
+    ...     'ICB_Name': ['Test ICB 1', 'Test ICB 2'],
     ...     'Total Responses': [100, 200]
     ... })
     >>> write_dataframe_to_sheet(wb, df, 'ICB', start_row=15, start_col=1)
@@ -327,17 +328,26 @@ def write_england_totals(
 
     >>> from src.fft.writers import load_template, write_england_totals
     >>> import pandas as pd
-    >>> import numpy as np
     >>> wb = load_template('inpatient')
     >>> nat_df = pd.DataFrame({
-    ...     'Submitter_Type': ['Total', 'NHS', 'IS1'],
-    ...     'Total Responses': [1000, 800, 200],
-    ...     'Percentage_Positive': [0.95, 0.94, 0.98]
+    ...     'Submitter_Type': ['Total', 'NHS'],
+    ...     'Total Responses': [1000, 800],
+    ...     'Total Eligible': [5000, 4000],
+    ...     'Percentage_Positive': [0.95, 0.94],
+    ...     'Percentage_Negative': [0.02, 0.03],
+    ...     'Very Good': [800, 650],
+    ...     'Good': [150, 120],
+    ...     'Neither Good nor Poor': [30, 20],
+    ...     'Poor': [15, 8],
+    ...     'Very Poor': [5, 2],
+    ...     "Don't Know": [0, 0]
     ... })
     >>> counts = {'total_count': 150, 'nhs_count': 130, 'is1_count': 20}
     >>> write_england_totals(wb, 'inpatient', nat_df, counts)
     >>> wb['ICB'].cell(row=12, column=3).value
-    np.int64(1000)
+    1000
+    >>> wb['ICB'].cell(row=12, column=5).value
+    0.95
 
     # Edge case: Missing Submitter_Type
     >>> bad_df = pd.DataFrame({'Total Responses': [1000]})
@@ -365,20 +375,17 @@ def write_england_totals(
     # Write to each sheet (ICB, Trusts, Sites, Wards)
     for level, sheet_config in config["sheets"].items():
         sheet_name = sheet_config["sheet_name"]
-        name_column = sheet_config["name_column"]
 
         if sheet_name not in workbook.sheetnames:
             continue
 
         sheet = workbook[sheet_name]
 
-        # Row 12: England (including IS)
-        sheet.cell(
-            row=england_rows["including_is"], column=1
-        ).value = "England (including Independent Sector Providers)"
-        # Write Total row data starting from column with totals
-        col_idx = 3  # Assuming Total Responses starts at column C
-        for col_name in [
+        # Get output columns for this sheet to determine positioning
+        output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
+
+        # Find the index where data columns start (after geographic identifiers)
+        data_columns = [
             "Total Responses",
             "Total Eligible",
             "Percentage_Positive",
@@ -389,39 +396,38 @@ def write_england_totals(
             "Poor",
             "Very Poor",
             "Don't Know",
-        ]:
-            if col_name in total_row.columns:
+        ]
+
+        # Row 12: England (including IS)
+        name_col_idx = (
+            output_cols.index(sheet_config["name_column"]) + 1
+        )  # +1 for 1-indexed
+        sheet.cell(
+            row=england_rows["including_is"], column=name_col_idx
+        ).value = "England (including Independent Sector Providers)"
+
+        for col_name in data_columns:
+            if col_name in output_cols and col_name in total_row.columns:
+                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
                 sheet.cell(
                     row=england_rows["including_is"], column=col_idx
                 ).value = total_row[col_name].values[0]
-                col_idx += 1
 
         # Row 13: England (excluding IS)
         sheet.cell(
-            row=england_rows["excluding_is"], column=1
+            row=england_rows["excluding_is"], column=name_col_idx
         ).value = "England (excluding Independent Sector Providers)"
-        col_idx = 3
-        for col_name in [
-            "Total Responses",
-            "Total Eligible",
-            "Percentage_Positive",
-            "Percentage_Negative",
-            "Very Good",
-            "Good",
-            "Neither Good nor Poor",
-            "Poor",
-            "Very Poor",
-            "Don't Know",
-        ]:
-            if col_name in nhs_row.columns:
+
+        for col_name in data_columns:
+            if col_name in output_cols and col_name in nhs_row.columns:
+                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
                 sheet.cell(
                     row=england_rows["excluding_is"], column=col_idx
                 ).value = nhs_row[col_name].values[0]
-                col_idx += 1
 
         # Row 14: Selection placeholder
         sheet.cell(
-            row=england_rows["selection"], column=1
+            row=england_rows["selection"], column=name_col_idx
         ).value = "Selection (excluding suppressed data)"
 
 
