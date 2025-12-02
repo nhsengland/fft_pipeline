@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from src.fft.config import (
     PROCESSING_LEVELS,
@@ -109,25 +110,21 @@ def process_level(df, service_type, level, parent_df=None):
 
 
 # %%
-def run_pipeline(service_type: str) -> None:
-    """Run the full FFT pipeline for a service type."""
-    logger.info(f"Starting FFT pipeline for {service_type}")
-
-    processing_config = PROCESSING_LEVELS[service_type]
+def process_single_file(
+    service_type: str, file_path: Path, processing_config: dict
+) -> None:
+    """Process a single raw data file and generate output report."""
     levels = processing_config["levels"]
     sheet_mapping = processing_config["sheet_mapping"]
 
-    # Step 1: Find latest files
-    logger.info("Loading latest raw data files...")
-    files = find_latest_files(service_type, n=2)
-    if not files:
-        raise FileNotFoundError(f"No raw data files found for {service_type}")
-    logger.info(f"Found {len(files)} files: {[f.name for f in files]}")
-
-    # Step 2: Load raw data (current month)
+    # Step 2: Load raw data
     logger.info("Loading raw data from Excel...")
-    raw_data = load_raw_data(files[0])
-    logger.info(f"Loaded {len(raw_data)} sheets: {list(raw_data.keys())}")
+    raw_data = load_raw_data(file_path)
+
+    # After loading raw_data (Step 2)
+    logger.debug(f"Sheets loaded: {list(raw_data.keys())}")
+    for sheet_name, df in raw_data.items():
+        logger.debug(f"  {sheet_name}: {len(df)} rows")
 
     # Step 3: Extract FFT period
     first_sheet = list(raw_data.values())[0]
@@ -155,6 +152,11 @@ def run_pipeline(service_type: str) -> None:
 
                 df = merge_collection_modes(df, coll_df)
         cleaned_data[level] = df
+
+    # Check if we have any data to process
+    if all(df.empty for df in cleaned_data.values()):
+        logger.warning(f"No data found in {file_path.name} - skipping")
+        return
 
     # Step 4.5: Mark independent sector providers across all levels
     logger.info("Marking independent sector providers...")
@@ -330,6 +332,37 @@ def run_pipeline(service_type: str) -> None:
     logger.info("Saving output...")
     output_path = save_output(wb, service_type, fft_period)
     logger.info(f"✓ Output saved to: {output_path}")
+
+
+# %%
+def run_pipeline(service_type: str) -> None:
+    """Run the full FFT pipeline for a service type."""
+    logger.info(f"Starting FFT pipeline for {service_type}")
+
+    processing_config = PROCESSING_LEVELS[service_type]
+    levels = processing_config["levels"]
+    sheet_mapping = processing_config["sheet_mapping"]
+
+    # Step 1: Find all raw data files
+    logger.info("Finding raw data files...")
+    files = find_latest_files(service_type, n=100)  # Get all available files
+    if not files:
+        raise FileNotFoundError(f"No raw data files found for {service_type}")
+    logger.info(f"Found {len(files)} files to process")
+
+    # Process each file
+    for file_path in files:
+        logger.info(f"\n{'=' * 50}")
+        logger.info(f"Processing: {file_path.name}")
+        logger.info(f"{'=' * 50}")
+
+        try:
+            process_single_file(service_type, file_path, processing_config)
+        except Exception as e:
+            logger.error(f"Failed to process {file_path.name}: {e}")
+            continue  # Continue with next file
+
+    logger.info(f"\n✓ Pipeline completed - processed {len(files)} files")
 
 
 # %%
