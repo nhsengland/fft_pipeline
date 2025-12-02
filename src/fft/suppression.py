@@ -1,7 +1,8 @@
 """Suppression logic for FFT data privacy protection."""
 
 import pandas as pd
-from src.fft.config import SUPPRESSION_THRESHOLD, AGGREGATION_COLUMNS
+
+from src.fft.config import AGGREGATION_COLUMNS, SUPPRESSION_THRESHOLD
 
 
 # %%

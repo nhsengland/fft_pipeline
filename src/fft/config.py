@@ -456,8 +456,8 @@ PROCESSING_LEVELS = {
 SERVICE_TYPES = {
     "ip": "inpatient",
     "ae": "ae",
-    "ambulance": "ambulance",
+    "amb": "ambulance",
     # Add new service types here:
-    # 'op': 'outpatient',
-    # 'maternity': 'maternity',
+    # "op": "outpatient",
+    # "mat": "maternity",
 }
