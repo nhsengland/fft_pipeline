@@ -6,38 +6,38 @@ import sys
 from pathlib import Path
 
 from src.fft.config import (
-    PROCESSING_LEVELS,
-    TEMPLATE_CONFIG,
-    SERVICE_TYPES,
     OUTPUT_COLUMNS,
+    PROCESSING_LEVELS,
+    SERVICE_TYPES,
+    TEMPLATE_CONFIG,
 )
 from src.fft.loaders import find_latest_files, load_raw_data
 from src.fft.processors import (
-    extract_fft_period,
-    standardise_column_names,
-    remove_unwanted_columns,
     aggregate_to_icb,
-    aggregate_to_trust,
-    aggregate_to_site,
     aggregate_to_national,
-    merge_collection_modes,
+    aggregate_to_site,
+    aggregate_to_trust,
     clean_icb_name,
+    extract_fft_period,
+    merge_collection_modes,
+    remove_unwanted_columns,
+    standardise_column_names,
 )
 from src.fft.suppression import (
     add_rank_column,
+    apply_cascade_suppression,
     apply_first_level_suppression,
     apply_second_level_suppression,
-    apply_cascade_suppression,
     suppress_values,
 )
 from src.fft.writers import (
-    load_template,
-    write_dataframe_to_sheet,
-    write_bs_lookup_data,
-    write_england_totals,
-    update_period_labels,
     format_percentage_columns,
+    load_template,
     save_output,
+    update_period_labels,
+    write_bs_lookup_data,
+    write_dataframe_to_sheet,
+    write_england_totals,
 )
 
 # Configure logging
@@ -335,7 +335,7 @@ def process_single_file(
 
 
 # %%
-def run_pipeline(service_type: str) -> None:
+def run_pipeline(service_type: str, month: str = None) -> None:
     """Run the full FFT pipeline for a service type."""
     logger.info(f"Starting FFT pipeline for {service_type}")
 
@@ -349,6 +349,12 @@ def run_pipeline(service_type: str) -> None:
     if not files:
         raise FileNotFoundError(f"No raw data files found for {service_type}")
     logger.info(f"Found {len(files)} files to process")
+
+    # Filter to specific month if requested
+    if month:
+        files = [f for f in files if month in f.name]
+        if not files:
+            raise FileNotFoundError(f"No file found for month: {month}")
 
     # Process each file
     for file_path in files:
@@ -380,6 +386,13 @@ def main():
             f"--{flag}", action="store_true", help=f"Process {service_type.title()} data"
         )
 
+    parser.add_argument(
+        "--month",
+        type=str,
+        default=None,
+        help="Process specific month only (e.g., Aug-25)",
+    )
+
     args = parser.parse_args()
 
     # Determine service type from args
@@ -390,7 +403,7 @@ def main():
             break
 
     try:
-        run_pipeline(service_type)
+        run_pipeline(service_type, month=args.month)
         logger.info("✓ Pipeline completed successfully")
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)

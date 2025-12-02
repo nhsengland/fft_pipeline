@@ -1,20 +1,19 @@
 """Excel output functions."""
 
 from pathlib import Path
-import pandas as pd
 
+import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.workbook import Workbook
 
 from src.fft.config import (
-    TEMPLATES_DIR,
-    TEMPLATE_CONFIG,
     BS_SHEET_CONFIG,
+    OUTPUT_COLUMNS,
+    OUTPUTS_DIR,
+    PERCENTAGE_COLUMN_CONFIG,
     PERIOD_LABEL_CONFIG,
     TEMPLATE_CONFIG,
-    PERCENTAGE_COLUMN_CONFIG,
-    OUTPUTS_DIR,
-    OUTPUT_COLUMNS,
+    TEMPLATES_DIR,
 )
 
 

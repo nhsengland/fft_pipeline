@@ -2,8 +2,10 @@
 
 # %% Imports
 from pathlib import Path
+
 import pandas as pd
-from src.fft.config import RAW_DIR, ROLLING_TOTALS_DIR, FILE_PATTERNS
+
+from src.fft.config import FILE_PATTERNS, RAW_DIR, ROLLING_TOTALS_DIR
 
 
 # %%
