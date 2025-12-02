@@ -192,8 +192,6 @@ def remove_unwanted_columns(
     return df.drop(columns=cols_to_drop)
 
 
-
-
 # %% Aggregation
 def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFrame:
     """Helper function to aggregate data by specified grouping columns.
@@ -561,3 +559,39 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         ).round(4)
 
     return agg_df, org_counts
+
+
+# %%
+def merge_collection_modes(
+    org_df: pd.DataFrame, collection_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Merge collection mode data into organisation-level DataFrame.
+
+    Args:
+        org_df: Organisation-level DataFrame with Trust_Code
+        collection_df: Collection mode DataFrame with mode columns
+
+    Returns:
+        Merged DataFrame with mode columns added
+
+    >>> import pandas as pd
+    >>> org = pd.DataFrame({'Trust_Code': ['T01', 'T02'], 'Total Responses': [100, 200]})
+    >>> coll = pd.DataFrame({'Trust_Code': ['T01', 'T02'], 'Mode SMS': [50, 100], 'Mode Online': [50, 100]})
+    >>> merged = merge_collection_modes(org, coll)
+    >>> 'Mode SMS' in merged.columns
+    True
+    """
+    mode_columns = [col for col in collection_df.columns if col.startswith("Mode ")]
+
+    # Keep only Trust_Code and mode columns from collection data
+    coll_subset = collection_df[["Trust_Code"] + mode_columns].copy()
+
+    # Merge on Trust_Code
+    merged = org_df.merge(coll_subset, on="Trust_Code", how="left")
+
+    # Fill NaN mode values with 0
+    for col in mode_columns:
+        if col in merged.columns:
+            merged[col] = merged[col].fillna(0).astype(int)
+
+    return merged

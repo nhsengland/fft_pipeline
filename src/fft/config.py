@@ -207,7 +207,6 @@ OUTPUT_COLUMNS = {
         ],
         "Trusts": [
             "ICB_Code",
-            "ICB_Name",
             "Trust_Code",
             "Trust_Name",
             "Total Responses",
@@ -231,7 +230,6 @@ OUTPUT_COLUMNS = {
         ],
         "Sites": [
             "ICB_Code",
-            "ICB_Name",
             "Trust_Code",
             "Trust_Name",
             "Site_Code",
@@ -249,7 +247,6 @@ OUTPUT_COLUMNS = {
         ],
         "Wards": [
             "ICB_Code",
-            "ICB_Name",
             "Trust_Code",
             "Trust_Name",
             "Site_Code",
@@ -291,11 +288,13 @@ TEMPLATE_CONFIG = {
             "icb": {
                 "sheet_name": "ICB",
                 "name_column": "ICB_Name",
+                "england_label_column": "ICB_Name",
                 "columns": [*ICB_COLS, *TOTALS_COLS, *PERCENTAGE_COLS, *LIKERT_COLS],
             },
             "organisation": {
                 "sheet_name": "Trusts",
                 "name_column": "Trust_Name",
+                "england_label_column": "Trust_Name",
                 "columns": [
                     *ICB_COLS,
                     *TRUST_COLS,
@@ -308,6 +307,7 @@ TEMPLATE_CONFIG = {
             "site": {
                 "sheet_name": "Sites",
                 "name_column": "Site_Name",
+                "england_label_column": "Site_Name",
                 "columns": [
                     *ICB_COLS,
                     *TRUST_COLS,
@@ -320,6 +320,7 @@ TEMPLATE_CONFIG = {
             "ward": {
                 "sheet_name": "Wards",
                 "name_column": "Ward_Name",
+                "england_label_column": "Ward_Name",
                 "columns": [
                     *ICB_COLS,
                     *TRUST_COLS,
