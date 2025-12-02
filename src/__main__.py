@@ -20,6 +20,7 @@ from src.fft.processors import (
     aggregate_to_site,
     aggregate_to_national,
     merge_collection_modes,
+    clean_icb_name,
 )
 from src.fft.suppression import (
     add_rank_column,
@@ -178,6 +179,14 @@ def run_pipeline(service_type: str) -> None:
             axis=1,
         )
         cleaned_data[level] = df
+
+    # Step 4.6: Clean ICB names
+    logger.info("Cleaning ICB names...")
+    for level in cleaned_data:
+        if "ICB_Name" in cleaned_data[level].columns:
+            cleaned_data[level]["ICB_Name"] = cleaned_data[level]["ICB_Name"].apply(
+                clean_icb_name
+            )
 
     # Step 5: Aggregate to ICB level
     logger.info("Aggregating to ICB level...")
