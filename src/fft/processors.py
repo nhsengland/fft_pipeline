@@ -595,3 +595,31 @@ def merge_collection_modes(
             merged[col] = merged[col].fillna(0).astype(int)
 
     return merged
+
+
+# %%
+def clean_icb_name(name: str) -> str:
+    """Clean ICB name to match standard format.
+
+    Args:
+        name: Raw ICB name (e.g., "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD")
+
+    Returns:
+        Cleaned name (e.g., "LANCASHIRE AND SOUTH CUMBRIA ICB")
+
+    >>> clean_icb_name("NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD")
+    'LANCASHIRE AND SOUTH CUMBRIA ICB'
+    >>> clean_icb_name("NHS SUSSEX INTEGRATED CARE BOARD")
+    'SUSSEX ICB'
+    >>> clean_icb_name("INDEPENDENT SECTOR PROVIDERS")
+    'INDEPENDENT SECTOR PROVIDERS'
+    """
+    if not isinstance(name, str):
+        return name
+
+    result = name
+    if result.startswith("NHS "):
+        result = result[4:]  # Remove "NHS " prefix
+    result = result.replace("INTEGRATED CARE BOARD", "ICB")
+
+    return result.strip()
