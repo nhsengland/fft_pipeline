@@ -399,9 +399,7 @@ def write_england_totals(
         ]
 
         # Row 12: England (including IS)
-        name_col_idx = (
-            output_cols.index(sheet_config["name_column"]) + 1
-        )  # +1 for 1-indexed
+        name_col_idx = output_cols.index(sheet_config["england_label_column"]) + 1
         sheet.cell(
             row=england_rows["including_is"], column=name_col_idx
         ).value = "England (including Independent Sector Providers)"

@@ -19,6 +19,7 @@ from src.fft.processors import (
     aggregate_to_trust,
     aggregate_to_site,
     aggregate_to_national,
+    merge_collection_modes,
 )
 from src.fft.suppression import (
     add_rank_column,
@@ -143,6 +144,39 @@ def run_pipeline(service_type: str) -> None:
         df = raw_data[sheet_name].copy()
         df = standardise_column_names(df, service_type, level)
         df = remove_unwanted_columns(df, service_type, level)
+
+        if level == "organisation" and "collection_mode" in sheet_mapping:
+            coll_sheet = sheet_mapping["collection_mode"]
+            if coll_sheet in raw_data:
+                logger.info("Merging collection mode data...")
+                coll_df = raw_data[coll_sheet].copy()
+                coll_df = coll_df.rename(columns={"Org code": "Trust_Code"})
+
+                df = merge_collection_modes(df, coll_df)
+        cleaned_data[level] = df
+
+    # Step 4.5: Mark independent sector providers across all levels
+    logger.info("Marking independent sector providers...")
+
+    for level in ["organisation", "site", "ward"]:
+        if level not in cleaned_data:
+            continue
+        df = cleaned_data[level]
+        df["ICB_Code"] = df.apply(
+            lambda row: "IS1"
+            if not (
+                "NHS" in str(row["Trust_Name"]).upper()
+                and "TRUST" in str(row["Trust_Name"]).upper()
+            )
+            else row["ICB_Code"],
+            axis=1,
+        )
+        df["ICB_Name"] = df.apply(
+            lambda row: "INDEPENDENT SECTOR PROVIDERS"
+            if row["ICB_Code"] == "IS1"
+            else row["ICB_Name"],
+            axis=1,
+        )
         cleaned_data[level] = df
 
     # Step 5: Aggregate to ICB level
@@ -210,6 +244,28 @@ def run_pipeline(service_type: str) -> None:
     # Step 8: Load template workbook
     logger.info("Loading template...")
     wb = load_template(service_type)
+
+    # Step 8.5: Sort DataFrames (NHS entries alphabetically, IS1 at end)
+    logger.info("Sorting data...")
+
+    def sort_with_is1_last(df, sort_cols):
+        """Sort DataFrame with IS1 entries appearing last."""
+        df = df.copy()
+        df["_is_is1"] = df["ICB_Code"] == "IS1"
+        df = df.sort_values(["_is_is1"] + sort_cols)
+        df = df.drop(columns=["_is_is1"])
+        return df
+
+    icb_suppressed = sort_with_is1_last(icb_suppressed, ["ICB_Code"])
+    org_suppressed = sort_with_is1_last(org_suppressed, ["ICB_Code", "Trust_Code"])
+    if "site" in cleaned_data:
+        site_suppressed = sort_with_is1_last(
+            site_suppressed, ["ICB_Code", "Trust_Code", "Site_Code"]
+        )
+    if "ward" in cleaned_data:
+        ward_suppressed = sort_with_is1_last(
+            ward_suppressed, ["ICB_Code", "Trust_Code", "Site_Code", "Ward_Name"]
+        )
 
     # Step 9: Write data to sheets (use SUPPRESSED versions)
     suppressed_data = {
