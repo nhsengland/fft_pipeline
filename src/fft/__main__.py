@@ -358,9 +358,10 @@ def run_pipeline(service_type: str, month: str = None) -> None:
 
     # Process each file
     for file_path in files:
-        logger.info(f"\n{'=' * 50}")
+        logger.info("")
+        logger.info("=" * 50)
         logger.info(f"Processing: {file_path.name}")
-        logger.info(f"{'=' * 50}")
+        logger.info("=" * 50)
 
         try:
             process_single_file(service_type, file_path, processing_config)
@@ -368,7 +369,8 @@ def run_pipeline(service_type: str, month: str = None) -> None:
             logger.error(f"Failed to process {file_path.name}: {e}")
             continue  # Continue with next file
 
-    logger.info(f"\n✓ Pipeline completed - processed {len(files)} files")
+    logger.info("")
+    logger.info(f"✓ Pipeline completed - processed {len(files)} files")
 
 
 # %%
