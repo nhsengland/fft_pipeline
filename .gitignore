@@ -1,5 +1,14 @@
-# Data directory - never commit to GitHub
-data/
+# Data files - never commit patient data to GitHub
+data/inputs/raw/*.xlsx
+data/inputs/raw/*.xls
+data/inputs/rolling_totals/*.csv
+data/inputs/rolling_totals/*.xlsx
+data/inputs/collections_overview/*
+data/outputs/*
+
+# But keep .gitkeep files and templates
+!data/**/.gitkeep
+!data/inputs/templates/*.xlsm
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

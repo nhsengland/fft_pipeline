@@ -1,0 +1,6 @@
+# This directory contains rolling totals CSV files
+# Files are not committed to git (contain real patient data)
+# Expected files:
+# - Monthly Rolling Totals inpatient.csv (or inpatients.csv as fallback)
+# - Monthly Rolling Totals ae.csv
+# - Monthly Rolling Totals ambulance.csv
