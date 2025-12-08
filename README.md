@@ -8,8 +8,8 @@ The Friends and Family Test (FFT) is the UK's largest patient feedback programme
 
 Supports multiple service types:
 - **Inpatient services** (Ward → Site → Trust → ICB)
-- **A&E services** (Site → Trust → ICB)
-- **Ambulance services** (Trust → ICB)
+- **A&E services** (Site → Trust → ICB) _coming soon_
+- **Ambulance services** (Trust → ICB) _coming soon_
 
 ## Why This Exists
 
@@ -104,6 +104,22 @@ fft_pipeline/
 9. **Write**: Populate Excel template with all processed data
 10. **Save**: Output as `FFT-{service}-data-{period}.xlsm`
 
+```mermaid
+graph LR
+    A[Raw Excel Files] --> B[loaders.py]
+    B --> C[processors.py]
+    C --> D[suppression.py]
+    D --> E[writers.py]
+    E --> F[Output .xlsm]
+    
+    G[config.py] --> B
+    G --> C
+    G --> D
+    G --> E
+    
+    H[Template .xlsm] --> E
+```
+
 ## How Suppression Works
 
 **The Problem**: Small response counts (< 5) could identify individual patients.
@@ -123,6 +139,50 @@ ICB North (232 responses - suppressed due to having a Trust with 2 responses)
 ```
 
 Without cascade suppression, someone could calculate: `232 - 150 = 82`, revealing Trust C's data.
+
+### Geographic Level Processing Pattern 
+
+```mermaid 
+graph TD
+    A[Raw Excel Data] --> B[Ward Level]
+    B --> C[Site Level]
+    C --> D[Trust/Organisation Level]
+    D --> E[ICB Level]
+    E --> F[National Level]
+    
+    B --> B1[Steps:<br/>1. Standardise columns<br/>2. Mark IS1 providers<br/>3. Remove unwanted columns]
+    
+    C --> C1[Same steps as Ward]
+    
+    D --> D1[Same steps +<br/>Merge collection modes]
+    
+    E --> E1[Aggregate from Trust level<br/>Group by ICB Code/Name<br/>Sum responses<br/>Recalculate percentages]
+    
+    F --> F1[Aggregate from Trust level<br/>Group by Submitter Type<br/>Total + NHS + IS1 rows]
+```
+
+### Suppression Cascade Logic
+
+```mermaid
+graph TD
+    A[ICB Level] -->|Apply suppression| B[Flag ICBs with 1-4 responses]
+    B --> C[Second-level: Flag next lowest ICB]
+    
+    D[Trust Level] -->|Cascade from ICB| E[If parent ICB suppressed<br/>Suppress Rank 1 & 2 Trusts]
+    E --> F[Also apply first/second level<br/>for Trusts own data]
+    
+    G[Site Level] -->|Cascade from Trust| H[If parent Trust suppressed<br/>Suppress Rank 1 & 2 Sites]
+    H --> I[Also apply first/second level<br/>for Sites own data]
+    
+    J[Ward Level] -->|Cascade from Site| K[If parent Site suppressed<br/>Suppress Rank 1 & 2 Wards]
+    K --> L[Also apply first/second level<br/>for Wards own data]
+    
+    style B fill:#E74C3C,color:#fff
+    style C fill:#E74C3C,color:#fff
+    style E fill:#F39C12,color:#000
+    style H fill:#F39C12,color:#000
+    style K fill:#F39C12,color:#000
+```
 
 ## Example File Locations
 
