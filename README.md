@@ -93,17 +93,6 @@ fft_pipeline/
 
 ## Data Flow
 
-1. **Load**: Find and load latest 2 months of raw data + rolling totals
-2. **Extract**: Determine FFT period (e.g., "Aug-24")
-3. **Standardise**: Rename columns to common schema
-4. **Clean**: Remove unnecessary columns, validate data types
-5. **Aggregate**: Roll up data from lowest level (Ward/Site) to ICB
-6. **Suppress**: Apply privacy rules at each level with cascade
-7. **Calculate**: Generate England-level totals (NHS vs Independent providers)
-8. **Update**: Add current month to rolling totals
-9. **Write**: Populate Excel template with all processed data
-10. **Save**: Output as `FFT-{service}-data-{period}.xlsm`
-
 ```mermaid
 graph LR
     A[Raw Excel Files] --> B[loaders.py]
