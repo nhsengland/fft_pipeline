@@ -10,6 +10,9 @@ data/outputs/*
 !data/**/.gitkeep
 !data/inputs/templates/*.xlsm
 
+# FastHTML
+.sesskey
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
