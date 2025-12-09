@@ -1,10 +1,14 @@
 # FFT Pipeline
 
-**Automated processing of NHS Friends and Family Test (FFT) data into publishable reports.**
+**Automated processing of NHS Friends and Family Test (FFT) data into publishable reports via CLI or web interface.**
 
 ## What This Does
 
 The Friends and Family Test (FFT) is the UK's largest patient feedback programme, collecting ~2 million responses monthly. This pipeline transforms raw monthly FFT Excel data into formatted, suppression-compliant reports published by NHS England.
+
+**Available interfaces:**
+- **Command line interface** for automated/scripted processing
+- **Web interface** for interactive use via browser
 
 Supports multiple service types:
 - **Inpatient services** (Ward → Site → Trust → ICB)
@@ -45,16 +49,35 @@ Generates macro-enabled Excel reports matching NHS England publication standards
 - Dynamic filtering via backend dropdown lists
 - Consistent formatting across all service types
 
+### Web Interface
+Simple browser-based interface for interactive pipeline operations:
+- Service type selection with dynamic file discovery
+- Month filtering with "All months" option
+- Real-time status updates and log output
+- One-click output folder access
+- Accessible design with dark mode support
+
 ## Quick Start
 
 ```bash
 # Create virtual environment and install dependencies
 uv sync
+```
 
+### Option 1: Web Interface
+
+```bash
+# Start web interface (opens automatically in browser)
+uv run python src/app.py
+```
+
+### Option 2: Command Line
+
+```bash
 # Run for inpatient data (default: latest 2 months)
 uv run python -m fft --ip
 
-# Run for A&E data  
+# Run for A&E data
 uv run python -m fft --ae
 
 # Run for ambulance data
@@ -70,19 +93,21 @@ uv venv
 uv sync
 ```
 
-Dependencies include: `pandas`, `openpyxl`, `numpy`
+Dependencies include: `pandas`, `openpyxl`, `python-fasthtml`
 
 ## Project Structure
 
 ```
 fft_pipeline/
-├── src/fft/
-│   ├── config.py       # Centralised configuration (paths, mappings, constants)
-│   ├── loaders.py      # Data loading from Excel files
-│   ├── processors.py   # Transformation pipeline (rename, aggregate, calculate)
-│   ├── suppression.py  # Privacy suppression logic (first/second/cascade)
-│   ├── writers.py      # Excel output generation
-│   └── utils.py        # Helper functions (validation, etc.)
+├── src/
+│   ├── app.py          # FastHTML web interface
+│   └── fft/
+│       ├── config.py       # Centralised configuration (paths, mappings, constants)
+│       ├── loaders.py      # Data loading from Excel files
+│       ├── processors.py   # Transformation pipeline (rename, aggregate, calculate)
+│       ├── suppression.py  # Privacy suppression logic (first/second/cascade)
+│       ├── writers.py      # Excel output generation
+│       └── utils.py        # Helper functions (validation, etc.)
 ├── data/
 │   ├── inputs/
 │   │   ├── raw/               # Monthly raw Excel files (FFT_IP_V1 Aug-25.xlsx)
