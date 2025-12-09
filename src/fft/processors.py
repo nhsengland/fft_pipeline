@@ -623,3 +623,234 @@ def clean_icb_name(name: str) -> str:
     result = result.replace("INTEGRATED CARE BOARD", "ICB")
 
     return result.strip()
+
+
+# %%
+def convert_fft_period_to_datetime(fft_period: str):
+    """Convert FFT period string to datetime object for Collections Overview lookup.
+
+    Args:
+        fft_period: FFT period string (e.g., 'Jul-25')
+
+    Returns:
+        datetime object (e.g., datetime(2025, 7, 1))
+    """
+    import datetime
+
+    month_abbrev, year = fft_period.split('-')
+    year_full = 2000 + int(year)  # Convert 25 -> 2025
+
+    # Convert month abbreviation to number
+    month_map = {
+        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+    }
+
+    month_num = month_map[month_abbrev]
+    return datetime.datetime(year_full, month_num, 1)
+
+
+def extract_summary_data(
+    time_series_df: pd.DataFrame,
+    service_type: str,
+    current_period: str,
+    previous_period: str,
+) -> dict:
+    """Extract summary data from Time series for a given service type.
+
+    Retrieves organisations submitting, responses, and calculates percentages
+    for Total, NHS, and Independent Sector providers.
+
+    Args:
+        time_series_df: DataFrame from Collections Overview 'Time series' sheet
+        service_type: 'inpatient', 'ae', 'ambulance', etc.
+        current_period: Current FFT period (e.g., 'Jul-25')
+        previous_period: Previous FFT period (e.g., 'Jun-25')
+
+    Returns:
+        Dict with structure for populating Summary sheet
+
+    Raises:
+        KeyError: If service_type is invalid or required columns not found
+        ValueError: If periods not found in time series data
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from src.fft.processors import extract_summary_data
+    >>> df = pd.DataFrame({
+    ...     'Collection': ['Jul-25', 'Jun-25', 'May-25'],
+    ...     'Inpatient Submitted': [150, 148, 145],
+    ...     'Inpatient NHS Submitted': [134, 132, 130],
+    ...     'Inpatient IS Submitted': [19, 18, 17],
+    ...     'Inpatient Responses': [202745, 213043, 200000],
+    ...     'Inpatient NHS Responses': [186977, 195590, 185000],
+    ...     'Inpatient IS Responses': [15883, 17606, 15000],
+    ...     'Inpatient Extremely Likely': [180000, 190000, 178000],
+    ...     'Inpatient Likely': [12000, 12500, 11800],
+    ...     'Inpatient Extremely Unlikely': [2000, 2100, 1950],
+    ...     'Inpatient Unlikely': [1500, 1600, 1450],
+    ...     'Inpatient NHS Extremely Likely': [165000, 175000, 163000],
+    ...     'Inpatient NHS Likely': [11000, 11500, 10800],
+    ...     'Inpatient NHS Extremely Unlikely': [1800, 1900, 1750],
+    ...     'Inpatient NHS Unlikely': [1400, 1500, 1350],
+    ...     'Inpatient IS Extremely Likely': [15000, 16000, 14500],
+    ...     'Inpatient IS Likely': [700, 750, 680],
+    ...     'Inpatient IS Extremely Unlikely': [50, 55, 48],
+    ...     'Inpatient IS Unlikely': [30, 35, 28],
+    ... })
+    >>> result = extract_summary_data(df, 'inpatient', 'Jul-25', 'Jun-25')
+    >>> result['orgs_submitting']['total']
+    np.int64(150)
+    >>> result['orgs_submitting']['nhs']
+    np.int64(134)
+    >>> result['responses_current']['total']
+    np.int64(202745)
+
+    # Edge case: Unknown service type
+    >>> extract_summary_data(df, 'unknown', 'Jul-25', 'Jun-25')
+    Traceback (most recent call last):
+        ...
+    KeyError: "Unknown service type: 'unknown'"
+
+    # Edge case: Period not found
+    >>> extract_summary_data(df, 'inpatient', 'Jan-20', 'Dec-19')
+    Traceback (most recent call last):
+        ...
+    ValueError: Period 'Jan-20' not found in time series data
+    """
+    from src.fft.config import TIME_SERIES_PREFIXES, SUMMARY_COLUMNS
+
+    if service_type not in TIME_SERIES_PREFIXES:
+        raise KeyError(f"Unknown service type: '{service_type}'")
+
+    prefix = TIME_SERIES_PREFIXES[service_type]
+
+    # Convert periods to datetime objects for lookup
+    current_datetime = convert_fft_period_to_datetime(current_period)
+    previous_datetime = convert_fft_period_to_datetime(previous_period)
+
+    # Validate periods exist
+    if current_datetime not in time_series_df["Collection"].values:
+        raise ValueError(f"Period '{current_period}' not found in time series data")
+    if previous_datetime not in time_series_df["Collection"].values:
+        raise ValueError(f"Period '{previous_period}' not found in time series data")
+
+    current_row = time_series_df[time_series_df["Collection"] == current_datetime].iloc[0]
+    previous_row = time_series_df[time_series_df["Collection"] == previous_datetime].iloc[0]
+    current_idx = time_series_df[time_series_df["Collection"] == current_datetime].index[0]
+
+    def get_col(suffix):
+        """Build column name from prefix and suffix."""
+        return f"{prefix}{suffix}"
+
+    def calc_percentage(likely_val, extremely_likely_val, responses_val):
+        """Calculate percentage from likely + extremely likely / responses."""
+        if responses_val == 0:
+            return 0
+        return round((likely_val + extremely_likely_val) / responses_val, 2)
+
+    # Build orgs_submitting
+    orgs_cols = SUMMARY_COLUMNS["orgs_submitting"]
+    orgs_submitting = {
+        key: current_row[get_col(suffix)] for key, suffix in orgs_cols.items()
+    }
+
+    # Build responses (current and previous)
+    resp_cols = SUMMARY_COLUMNS["responses"]
+    responses_current = {
+        key: current_row[get_col(suffix)] for key, suffix in resp_cols.items()
+    }
+    responses_previous = {
+        key: previous_row[get_col(suffix)] for key, suffix in resp_cols.items()
+    }
+
+    # Build responses to date (cumulative sum)
+    responses_to_date = {
+        key: time_series_df.loc[current_idx:, get_col(suffix)].sum()
+        for key, suffix in resp_cols.items()
+    }
+
+    # Build percentage positive (current and previous)
+    pos_cols = SUMMARY_COLUMNS["positive"]
+    pct_positive_current = {
+        "total": calc_percentage(
+            current_row[get_col(pos_cols["likely"])],
+            current_row[get_col(pos_cols["extremely_likely"])],
+            responses_current["total"],
+        ),
+        "nhs": calc_percentage(
+            current_row[get_col(pos_cols["nhs_likely"])],
+            current_row[get_col(pos_cols["nhs_extremely_likely"])],
+            responses_current["nhs"],
+        ),
+        "is": calc_percentage(
+            current_row[get_col(pos_cols["is_likely"])],
+            current_row[get_col(pos_cols["is_extremely_likely"])],
+            responses_current["is"],
+        ),
+    }
+    pct_positive_previous = {
+        "total": calc_percentage(
+            previous_row[get_col(pos_cols["likely"])],
+            previous_row[get_col(pos_cols["extremely_likely"])],
+            responses_previous["total"],
+        ),
+        "nhs": calc_percentage(
+            previous_row[get_col(pos_cols["nhs_likely"])],
+            previous_row[get_col(pos_cols["nhs_extremely_likely"])],
+            responses_previous["nhs"],
+        ),
+        "is": calc_percentage(
+            previous_row[get_col(pos_cols["is_likely"])],
+            previous_row[get_col(pos_cols["is_extremely_likely"])],
+            responses_previous["is"],
+        ),
+    }
+
+    # Build percentage negative (current and previous)
+    neg_cols = SUMMARY_COLUMNS["negative"]
+    pct_negative_current = {
+        "total": calc_percentage(
+            current_row[get_col(neg_cols["unlikely"])],
+            current_row[get_col(neg_cols["extremely_unlikely"])],
+            responses_current["total"],
+        ),
+        "nhs": calc_percentage(
+            current_row[get_col(neg_cols["nhs_unlikely"])],
+            current_row[get_col(neg_cols["nhs_extremely_unlikely"])],
+            responses_current["nhs"],
+        ),
+        "is": calc_percentage(
+            current_row[get_col(neg_cols["is_unlikely"])],
+            current_row[get_col(neg_cols["is_extremely_unlikely"])],
+            responses_current["is"],
+        ),
+    }
+    pct_negative_previous = {
+        "total": calc_percentage(
+            previous_row[get_col(neg_cols["unlikely"])],
+            previous_row[get_col(neg_cols["extremely_unlikely"])],
+            responses_previous["total"],
+        ),
+        "nhs": calc_percentage(
+            previous_row[get_col(neg_cols["nhs_unlikely"])],
+            previous_row[get_col(neg_cols["nhs_extremely_unlikely"])],
+            responses_previous["nhs"],
+        ),
+        "is": calc_percentage(
+            previous_row[get_col(neg_cols["is_unlikely"])],
+            previous_row[get_col(neg_cols["is_extremely_unlikely"])],
+            responses_previous["is"],
+        ),
+    }
+
+    return {
+        "orgs_submitting": orgs_submitting,
+        "responses_to_date": responses_to_date,
+        "responses_current": responses_current,
+        "responses_previous": responses_previous,
+        "pct_positive_current": pct_positive_current,
+        "pct_positive_previous": pct_positive_previous,
+        "pct_negative_current": pct_negative_current,
+        "pct_negative_previous": pct_negative_previous,
+    }

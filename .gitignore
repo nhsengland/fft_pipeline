@@ -1,9 +1,7 @@
 # Data files - never commit patient data to GitHub
-data/inputs/raw/*.xlsx
-data/inputs/raw/*.xls
-data/inputs/rolling_totals/*.csv
-data/inputs/rolling_totals/*.xlsx
+data/inputs/raw/*
 data/inputs/collections_overview/*
+data/inputs/suppression_files/*
 data/outputs/*
 
 # But keep .gitkeep files and templates

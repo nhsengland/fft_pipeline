@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.fft.config import FILE_PATTERNS, RAW_DIR, ROLLING_TOTALS_DIR
+from src.fft.config import (
+    FILE_PATTERNS,
+    RAW_DIR,
+    ROLLING_TOTALS_DIR,
+    COLLECTIONS_OVERVIEW_DIR,
+    COLLECTIONS_OVERVIEW_FILE,
+)
 
 
 # %%
@@ -207,3 +213,44 @@ def load_rolling_totals(service_type: str) -> pd.DataFrame:
         raise FileNotFoundError("Rolling totals not found:")
 
     return pd.read_csv(file_path)
+
+
+# %%
+def load_collections_overview(file: str = COLLECTIONS_OVERVIEW_FILE) -> pd.DataFrame:
+    """Load the Time series sheet from FFT Collections Overview workbook.
+
+    Returns:
+        DataFrame containing historical time series data for all FFT services
+
+    Raises:
+        FileNotFoundError: If Collections Overview file doesn't exist
+
+    >>> from src.fft.loaders import load_collections_overview
+    >>> df = load_collections_overview()
+    >>> 'Collection' in df.columns
+    True
+
+    # Edge case: File doesn't exist
+    >>> load_collections_overview(file="nonexistent.xlsm")
+    Traceback (most recent call last):
+        ...
+    FileNotFoundError: Collections Overview not found: nonexistent.xlsm
+    """
+    file_path = COLLECTIONS_OVERVIEW_DIR / file
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"Collections Overview not found: {file}")
+
+    # Load data with header=1, then use first row as column names
+    df = pd.read_excel(file_path, sheet_name="Time series", header=1)
+
+    # Use first row as column headers, but keep 'Collection' column as is
+    new_headers = df.iloc[0].copy()  # First row contains the actual column headers
+    new_headers.iloc[1] = 'Collection'  # Keep 'Collection' column name
+
+    # Set new headers and remove the header row from data
+    df.columns = new_headers
+    df = df.iloc[1:].reset_index(drop=True)  # Skip first row (now used as headers)
+
+    return df
+

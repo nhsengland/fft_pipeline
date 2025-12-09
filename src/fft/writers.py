@@ -1,5 +1,6 @@
 """Excel output functions."""
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +16,8 @@ from src.fft.config import (
     TEMPLATE_CONFIG,
     TEMPLATES_DIR,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def load_template(service_type: str) -> Workbook:
@@ -550,3 +553,182 @@ def save_output(workbook: Workbook, service_type: str, fft_period: str) -> Path:
     workbook.save(output_path)
 
     return output_path
+
+
+# %%
+def write_summary_sheet(
+    workbook: Workbook,
+    summary_data: dict,
+    current_period: str,
+    previous_period: str,
+) -> None:
+    """Write summary data to the Summary sheet in the template.
+
+    Populates the Summary sheet with organisations submitting, responses,
+    and percentages for Total, NHS, and IS providers.
+
+    Args:
+        workbook: Openpyxl Workbook object
+        summary_data: Dict from extract_summary_data()
+        current_period: Current FFT period (e.g., 'Jul-25')
+        previous_period: Previous FFT period (e.g., 'Jun-25')
+
+    Returns:
+        None (modifies workbook in place)
+
+    Raises:
+        KeyError: If Summary sheet doesn't exist
+
+    >>> from src.fft.writers import load_template, write_summary_sheet
+    >>> wb = load_template('inpatient')
+    >>> summary_data = {
+    ...     'orgs_submitting': {'total': 150, 'nhs': 134, 'is': 19},
+    ...     'responses_to_date': {'total': 25769386, 'nhs': 24003672, 'is': 1769240},
+    ...     'responses_current': {'total': 202745, 'nhs': 186977, 'is': 15883},
+    ...     'responses_previous': {'total': 213043, 'nhs': 195590, 'is': 17606},
+    ...     'pct_positive_current': {'total': 0.95, 'nhs': 0.95, 'is': 0.99},
+    ...     'pct_positive_previous': {'total': 0.95, 'nhs': 0.95, 'is': 0.99},
+    ...     'pct_negative_current': {'total': 0.02, 'nhs': 0.03, 'is': 0.0},
+    ...     'pct_negative_previous': {'total': 0.02, 'nhs': 0.03, 'is': 0.0},
+    ... }
+    >>> write_summary_sheet(wb, summary_data, 'Jul 25', 'Jun 25')
+    >>> wb['Summary'].cell(row=8, column=3).value
+    150
+    >>> wb['Summary'].cell(row=9, column=3).value
+    134
+    """
+    if "Summary" not in workbook.sheetnames:
+        raise KeyError("Sheet 'Summary' not found in workbook")
+
+    sheet = workbook["Summary"]
+
+    # Row mapping: Total=8, NHS=9, IS=10
+    rows = {"total": 8, "nhs": 9, "is": 10}
+
+    # Column mapping (based on template structure)
+    # C: Orgs submitting (current)
+    # D: Responses to date
+    # E: Responses current
+    # F: Responses previous
+    # G: % Positive current
+    # H: % Positive previous
+    # I: % Negative current
+    # J: % Negative previous
+    cols = {
+        "orgs_submitting": 3,  # C
+        "responses_to_date": 4,  # D
+        "responses_current": 5,  # E
+        "responses_previous": 6,  # F
+        "pct_positive_current": 7,  # G
+        "pct_positive_previous": 8,  # H
+        "pct_negative_current": 9,  # I
+        "pct_negative_previous": 10,  # J
+    }
+
+    # Write period headers (row 7)
+    sheet.cell(row=7, column=3).value = current_period
+    sheet.cell(row=7, column=4).value = current_period
+    sheet.cell(row=7, column=5).value = current_period
+    sheet.cell(row=7, column=6).value = previous_period
+    sheet.cell(row=7, column=7).value = current_period
+    sheet.cell(row=7, column=8).value = previous_period
+    sheet.cell(row=7, column=9).value = current_period
+    sheet.cell(row=7, column=10).value = previous_period
+
+    # Write data for each provider type
+    for provider_key, row in rows.items():
+        for data_key, col in cols.items():
+            value = summary_data[data_key][provider_key]
+            sheet.cell(row=row, column=col).value = value
+
+
+# %%
+def calculate_previous_period(current_period: str) -> str:
+    """Calculate the previous FFT period from current period.
+
+    Args:
+        current_period: Current FFT period (e.g., 'Jul-25')
+
+    Returns:
+        Previous FFT period (e.g., 'Jun-25')
+
+    >>> calculate_previous_period('Jul-25')
+    'Jun-25'
+    >>> calculate_previous_period('Jan-25')
+    'Dec-24'
+    >>> calculate_previous_period('Apr-24')
+    'Mar-24'
+    """
+    from src.fft.config import MONTH_ABBREV
+
+    # Create reverse mapping from abbreviation to month number
+    abbrev_to_num = {abbrev: num for num, abbrev in enumerate(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], 1)}
+    num_to_abbrev = {num: abbrev for abbrev, num in abbrev_to_num.items()}
+
+    # Parse current period
+    month_abbrev, year = current_period.split('-')
+    month_num = abbrev_to_num[month_abbrev]
+    year_num = int(year)
+
+    # Calculate previous month
+    if month_num == 1:  # January -> December of previous year
+        prev_month_num = 12
+        prev_year_num = year_num - 1
+    else:
+        prev_month_num = month_num - 1
+        prev_year_num = year_num
+
+    # Convert back to period format
+    prev_month_abbrev = num_to_abbrev[prev_month_num]
+    prev_year_str = f"{prev_year_num:02d}"  # Format as 2-digit year
+
+    return f"{prev_month_abbrev}-{prev_year_str}"
+
+
+# %%
+def populate_summary_sheet(workbook: Workbook, service_type: str, current_period: str) -> None:
+    """Populate Summary sheet with Collections Overview time series data.
+
+    Loads Collections Overview data, extracts summary metrics, and writes to template Summary sheet.
+
+    Args:
+        workbook: Loaded template workbook
+        service_type: 'inpatient', 'ae', or 'ambulance'
+        current_period: Current FFT period (e.g., 'Jul-25')
+
+    Returns:
+        None (modifies workbook in place)
+
+    Raises:
+        FileNotFoundError: If Collections Overview file not found
+        KeyError: If service type not supported or data missing
+        ValueError: If periods not found in Collections Overview data
+    """
+    from src.fft.loaders import load_collections_overview
+    from src.fft.processors import extract_summary_data
+
+    try:
+        # Calculate previous period
+        previous_period = calculate_previous_period(current_period)
+
+        # Load Collections Overview time series data
+        time_series_df = load_collections_overview()
+
+        # Extract summary data for this service type and periods
+        summary_data = extract_summary_data(
+            time_series_df,
+            service_type,
+            current_period,
+            previous_period
+        )
+
+        # Write to Summary sheet
+        write_summary_sheet(workbook, summary_data, current_period, previous_period)
+
+    except FileNotFoundError as e:
+        logger.warning(f"Collections Overview file not found: {e}")
+        logger.warning("Skipping Summary sheet population")
+    except (KeyError, ValueError) as e:
+        logger.warning(f"Unable to populate Summary sheet: {e}")
+        logger.warning("Skipping Summary sheet population")
