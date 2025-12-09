@@ -33,6 +33,7 @@ from src.fft.suppression import (
 from src.fft.writers import (
     format_percentage_columns,
     load_template,
+    populate_summary_sheet,
     save_output,
     update_period_labels,
     write_bs_lookup_data,
@@ -319,6 +320,10 @@ def process_single_file(
         write_bs_lookup_data(wb, site_df, service_type)
     else:
         write_bs_lookup_data(wb, org_df, service_type)
+
+    # Step 11.5: Populate Summary sheet
+    logger.info("Populating Summary sheet...")
+    populate_summary_sheet(wb, service_type, fft_period)
 
     # Step 12: Update period labels
     logger.info("Updating period labels...")
