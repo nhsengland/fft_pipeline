@@ -13,6 +13,8 @@ RAW_DIR = INPUTS_DIR / "raw"
 ROLLING_TOTALS_DIR = INPUTS_DIR / "rolling_totals"
 TEMPLATES_DIR = INPUTS_DIR / "templates"
 OUTPUTS_DIR = DATA_DIR / "outputs"
+COLLECTIONS_OVERVIEW_DIR = INPUTS_DIR / "collections_overview"
+COLLECTIONS_OVERVIEW_FILE = "_FFT_CollectionOverview V1 5.xlsm"
 
 # =============================================================================
 # FILE PATTERNS
@@ -160,7 +162,6 @@ COLUMNS_TO_REMOVE = {
 # =============================================================================
 # AGGREGATION COLUMNS
 # =============================================================================
-
 
 AGGREGATION_COLUMNS = {
     "likert_responses": [
@@ -460,4 +461,53 @@ SERVICE_TYPES = {
     # Add new service types here:
     # "op": "outpatient",
     # "mat": "maternity",
+}
+
+# =============================================================================
+# COLLECTIONS OVERVIEW CONFIGURATION
+# =============================================================================
+
+# Time series column prefixes for each service type
+TIME_SERIES_PREFIXES = {
+    "inpatient": "Inpatient",
+    "ae": "A&E",
+    "ambulance": "Ambulance",
+    "outpatient": "Outpatient",
+    "maternity": "Q1",  # Maternity uses Q1-Q4 format
+    "community": "CH",
+    "mental_health": "MH",
+    "gp": "GP",
+    "dental": "Dental",
+    "post_covid": "Lcov Q1",
+}
+
+
+# Summary data column suffixes (appended to service prefix)
+SUMMARY_COLUMNS = {
+    "orgs_submitting": {
+        "total": " Submitted",
+        "nhs": " NHS Submitted",
+        "is": " IS Submitted",
+    },
+    "responses": {
+        "total": " Responses",
+        "nhs": " NHS Responses",
+        "is": " IS Responses",
+    },
+    "positive": {
+        "likely": " Likely",
+        "extremely_likely": " Extremely Likely",
+        "nhs_likely": " NHS Likely",
+        "nhs_extremely_likely": " NHS Extremely Likely",
+        "is_likely": " IS Likely",
+        "is_extremely_likely": " IS Extremely Likely",
+    },
+    "negative": {
+        "unlikely": " Unlikely",
+        "extremely_unlikely": " Extremely Unlikely",
+        "nhs_unlikely": " NHS Unlikely",
+        "nhs_extremely_unlikely": " NHS Extremely Unlikely",
+        "is_unlikely": " IS Unlikely",
+        "is_extremely_unlikely": " IS Extremely Unlikely",
+    },
 }
