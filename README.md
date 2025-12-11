@@ -4,20 +4,12 @@
 
 ## What This Does
 
-The Friends and Family Test (FFT) is the UK's largest patient feedback programme, collecting ~2 million responses monthly. This pipeline transforms raw monthly FFT Excel data into formatted, suppression-compliant reports published by NHS England.
+The Friends and Family Test (FFT) is the UK's largest patient feedback programme, collecting ~2 million responses monthly. This pipeline transforms raw monthly FFT Excel data into formatted, suppression-compliant reports published by NHS England. Reports are published with a monthly cadence at the NHS England [Friends and Family Test data](https://www.england.nhs.uk/fft/friends-and-family-test-data/) page.
 
 Supports multiple service types:
 - **Inpatient services** (Ward → Site → Trust → ICB)
 - **A&E services** (Site → Trust → ICB) _coming soon_
 - **Ambulance services** (Trust → ICB) _coming soon_
-
-## Why This Exists
-
-The original implementation was ~2,400 lines of procedural code with extensive repetition. This refactor provides:
-- **Modularity**: Reusable functions across service types
-- **Maintainability**: Clear separation of concerns
-- **Testability**: Doctests embedded in functions
-- **Extensibility**: Easy to add new service types
 
 ## Key Features
 
@@ -49,6 +41,7 @@ Generates macro-enabled Excel reports matching NHS England publication standards
 
 ```bash
 # Create virtual environment and install dependencies
+uv venv
 uv sync
 
 # Run for inpatient data (default: latest 2 months)
@@ -69,8 +62,6 @@ This project uses `uv` for dependency management. Your `pyproject.toml` contains
 uv venv
 uv sync
 ```
-
-Dependencies include: `pandas`, `openpyxl`, `numpy`
 
 ## Project Structure
 
