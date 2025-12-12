@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fasthtml.common import *
 
-from src.fft.config import RAW_DIR, OUTPUTS_DIR, SERVICE_TYPES, FILE_PATTERNS
+from fft.config import RAW_DIR, OUTPUTS_DIR, SERVICE_TYPES, FILE_PATTERNS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
