@@ -204,6 +204,36 @@ Functions use doctests for inline testing:
 uv run python -m doctest $(find src/fft/ -name "*.py" -not -name "__main__.py")
 ```
 
+## Utilities
+
+### BS Sheet Population
+
+The pipeline includes a utility to populate template 'BS' sheets with content from suppression files:
+
+```bash
+# Populate all template BS sheets from corresponding suppression files
+uv run python src/fft/utils.py
+```
+
+**What it does:**
+- Automatically discovers templates and matches them with suppression files
+- Validates that both files contain 'BS' sheets before copying
+- Handles flexible naming conventions:
+  - `FFT_IP_template.xlsm` ← `IP_Suppression_V3.5.xlsm`
+  - `FFT_Amb_template.xlsm` ← `Aug25_Amb_Suppression.xlsm`
+  - `FFT_AE_template.xlsm` ← `AE_Suppression_V3.5.xlsm`
+
+**Safe to run multiple times** - the script is idempotent and will overwrite BS sheet content to match suppression files without creating duplicates or corruption.
+
+**Example output:**
+```
+4 templates successfully updated with suppression data:
+- OP: 5,904 cells copied
+- Amb: 504 cells copied
+- IP: 288,272 cells copied
+- AE: 7,854 cells copied
+```
+
 ## Development Status
 
 **Current**: Inpatient pipeline (Ward → Site → Trust → ICB)  
