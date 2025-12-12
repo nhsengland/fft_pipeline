@@ -162,60 +162,6 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
 
 
 # %%
-def load_rolling_totals(service_type: str) -> pd.DataFrame:
-    """Load the rolling totals file for the given service type.
-
-    Args:
-        service_type: One of 'inpatient', 'ae', or 'ambulance'
-
-    Returns:
-        DataFrame containing historical rolling totals
-
-    Raises:
-        FileNotFoundError: If rolling totals file doesn't exist
-
-    >>> df = load_rolling_totals("inpatient")
-    >>> isinstance(df, pd.DataFrame)
-    True
-
-    # Edge case: Service type with plural filename handling
-    >>> df_inpatient = load_rolling_totals("inpatient")
-    >>> isinstance(df_inpatient, pd.DataFrame)  # Should handle inpatients.csv fallback
-    True
-
-    # Edge case: Empty rolling totals file (CSV with headers but no data)
-    >>> import os
-    >>> from src.fft.config import ROLLING_TOTALS_DIR
-    >>> test_file = ROLLING_TOTALS_DIR / "Monthly Rolling Totals test.csv"
-    >>> _ = test_file.write_text("Year,Month,Total\\n")  # CSV with headers but no data
-    >>> df_empty = load_rolling_totals("test")
-    >>> len(df_empty) == 0
-    True
-    >>> test_file.unlink()  # Clean up
-
-    # Error case: Non-existent service type
-    >>> load_rolling_totals("unknown_service")
-    Traceback (most recent call last):
-        ...
-    FileNotFoundError: Rolling totals not found:
-    """
-
-    filename = f"Monthly Rolling Totals {service_type}.csv"
-    file_path = ROLLING_TOTALS_DIR / filename
-
-    # Handle plural form for inpatient (common naming inconsistency)
-    if not file_path.exists() and service_type == "inpatient":
-        filename = f"Monthly Rolling Totals {service_type}s.csv"
-        file_path = ROLLING_TOTALS_DIR / filename
-
-    if not file_path.exists():
-        # Use exactly the error message expected in the doctest
-        raise FileNotFoundError("Rolling totals not found:")
-
-    return pd.read_csv(file_path)
-
-
-# %%
 def load_collections_overview(file: str = COLLECTIONS_OVERVIEW_FILE) -> pd.DataFrame:
     """Load the Time series sheet from FFT Collections Overview workbook.
 
@@ -225,7 +171,7 @@ def load_collections_overview(file: str = COLLECTIONS_OVERVIEW_FILE) -> pd.DataF
     Raises:
         FileNotFoundError: If Collections Overview file doesn't exist
 
-    >>> from src.fft.loaders import load_collections_overview
+    >>> from fft.loaders import load_collections_overview
     >>> df = load_collections_overview()
     >>> 'Collection' in df.columns
     True
@@ -246,11 +192,10 @@ def load_collections_overview(file: str = COLLECTIONS_OVERVIEW_FILE) -> pd.DataF
 
     # Use first row as column headers, but keep 'Collection' column as is
     new_headers = df.iloc[0].copy()  # First row contains the actual column headers
-    new_headers.iloc[1] = 'Collection'  # Keep 'Collection' column name
+    new_headers.iloc[1] = "Collection"  # Keep 'Collection' column name
 
     # Set new headers and remove the header row from data
     df.columns = new_headers
     df = df.iloc[1:].reset_index(drop=True)  # Skip first row (now used as headers)
 
     return df
-
