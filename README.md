@@ -61,7 +61,7 @@ uv sync
 
 ```bash
 # Start web interface (opens automatically in browser)
-uv run python src/app.py
+uv run python src/fft/app/server.py
 ```
 
 ### Option 2: Command Line
@@ -91,8 +91,11 @@ uv sync
 ```
 fft_pipeline/
 ├── src/
-│   ├── app.py          # FastHTML web interface
 │   └── fft/
+│       ├── app/            # FastHTML web interface
+│       │   ├── __init__.py
+│       │   ├── __main__.py
+│       │   └── server.py   # Main web application
 │       ├── config.py       # Centralised configuration (paths, mappings, constants)
 │       ├── loaders.py      # Data loading from Excel files
 │       ├── processors.py   # Transformation pipeline (rename, aggregate, calculate)

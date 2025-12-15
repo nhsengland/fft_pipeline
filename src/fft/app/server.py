@@ -240,7 +240,7 @@ def get_months(service_type: str) -> list[str]:
 
 def run_cmd(service: str, month: str) -> tuple[bool, str]:
     flag = [k for k, v in SERVICE_TYPES.items() if v == service][0]
-    cmd = ["uv", "run", "python", "-m", "src.fft", f"--{flag}"]
+    cmd = ["uv", "run", "python", "-m", "fft", f"--{flag}"]
     if month and month != "all":
         cmd.extend(["--month", month])
 
@@ -270,7 +270,7 @@ def service_select():
 
 
 def month_select(months=None):
-    opts = [Option("All months", value="all")]
+    opts = [Option("All months", value="all", selected=True)]
     if months:
         opts += [Option(m, value=m) for m in months]
     return Select(*opts, name="month", id="month")
@@ -364,5 +364,19 @@ def post():
     return ""
 
 
+def cleanup_port_5001():
+    """Kill any processes using port 5001 to ensure clean startup."""
+    try:
+        result = subprocess.run(["lsof", "-ti:5001"], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            pids = result.stdout.strip().split()
+            for pid in pids:
+                subprocess.run(["kill", pid], capture_output=True)
+            logger.info(f"Cleaned up processes on port 5001: {pids}")
+    except Exception as e:
+        logger.debug(f"Port cleanup failed (likely no processes to clean): {e}")
+
+
 if __name__ == "__main__":
+    cleanup_port_5001()
     serve()

@@ -4,7 +4,7 @@
 import numpy as np
 import pandas as pd
 
-from src.fft.config import (
+from fft.config import (
     AGGREGATION_COLUMNS,
     COLUMN_MAPS,
     COLUMNS_TO_REMOVE,
@@ -718,7 +718,7 @@ def extract_summary_data(
         ...
     ValueError: Period 'Jan-20' not found in time series data
     """
-    from src.fft.config import TIME_SERIES_PREFIXES, SUMMARY_COLUMNS
+    from fft.config import TIME_SERIES_PREFIXES, SUMMARY_COLUMNS
 
     if service_type not in TIME_SERIES_PREFIXES:
         raise KeyError(f"Unknown service type: '{service_type}'")
