@@ -5,10 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.fft.config import (
+from fft.config import (
     FILE_PATTERNS,
     RAW_DIR,
-    ROLLING_TOTALS_DIR,
     COLLECTIONS_OVERVIEW_DIR,
     COLLECTIONS_OVERVIEW_FILE,
 )

@@ -7,7 +7,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.workbook import Workbook
 
-from src.fft.config import (
+from fft.config import (
     BS_SHEET_CONFIG,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
@@ -659,7 +659,7 @@ def calculate_previous_period(current_period: str) -> str:
     >>> calculate_previous_period('Apr-24')
     'Mar-24'
     """
-    from src.fft.config import MONTH_ABBREV
+    from fft.config import MONTH_ABBREV
 
     # Create reverse mapping from abbreviation to month number
     abbrev_to_num = {abbrev: num for num, abbrev in enumerate(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -705,8 +705,8 @@ def populate_summary_sheet(workbook: Workbook, service_type: str, current_period
         KeyError: If service type not supported or data missing
         ValueError: If periods not found in Collections Overview data
     """
-    from src.fft.loaders import load_collections_overview
-    from src.fft.processors import extract_summary_data
+    from fft.loaders import load_collections_overview
+    from fft.processors import extract_summary_data
 
     try:
         # Calculate previous period

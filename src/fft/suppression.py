@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.fft.config import AGGREGATION_COLUMNS, SUPPRESSION_THRESHOLD
+from fft.config import AGGREGATION_COLUMNS, SUPPRESSION_THRESHOLD
 
 
 # %%

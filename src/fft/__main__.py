@@ -5,14 +5,14 @@ import logging
 import sys
 from pathlib import Path
 
-from src.fft.config import (
+from fft.config import (
     OUTPUT_COLUMNS,
     PROCESSING_LEVELS,
     SERVICE_TYPES,
     TEMPLATE_CONFIG,
 )
-from src.fft.loaders import find_latest_files, load_raw_data
-from src.fft.processors import (
+from fft.loaders import find_latest_files, load_raw_data
+from fft.processors import (
     aggregate_to_icb,
     aggregate_to_national,
     aggregate_to_site,
@@ -23,14 +23,14 @@ from src.fft.processors import (
     remove_unwanted_columns,
     standardise_column_names,
 )
-from src.fft.suppression import (
+from fft.suppression import (
     add_rank_column,
     apply_cascade_suppression,
     apply_first_level_suppression,
     apply_second_level_suppression,
     suppress_values,
 )
-from src.fft.writers import (
+from fft.writers import (
     format_percentage_columns,
     load_template,
     populate_summary_sheet,
