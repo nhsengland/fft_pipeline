@@ -343,32 +343,34 @@ TEMPLATE_CONFIG = {
 # =============================================================================
 
 # BS Sheet column positions (1-indexed)
+
 BS_SHEET_CONFIG = {
     "inpatient": {
         "reference_list_start_col": 21,  # Column U
         "reference_list_start_row": 2,
         "reference_columns": [
             "ICB_Code",
-            "ICB_Name",
             "Trust_Code",
             "Trust_Name",
             "Site_Code",
             "Site_Name",
+            "Ward_Name",
         ],
         "linked_lists": {
-            "trusts": {"start_col": 31, "columns": ["Trust_Code", "Trust_Name"]},
+            "trusts": {
+                "start_col": 31,  # AE
+                "pairs": [["Trust_Code", "Trust_Name"]],
+            },
             "sites": {
-                "start_col": 34,
-                "columns": ["Trust_Code", "Trust_Name", "Site_Code", "Site_Name"],
+                "start_col": 34,  # AH
+                "pairs": [["Trust_Code", "Trust_Name"], ["Site_Code", "Site_Name"]],
             },
             "wards": {
-                "start_col": 39,
-                "columns": [
-                    "Trust_Code",
-                    "Trust_Name",
-                    "Site_Code",
-                    "Site_Name",
-                    "Ward_Name",
+                "start_col": 39,  # AM
+                "pairs": [
+                    ["Trust_Code", "Trust_Name"],
+                    ["Site_Code", "Site_Name"],
+                    ["Ward_Name"],
                 ],
             },
         },

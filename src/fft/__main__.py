@@ -15,8 +15,6 @@ from fft.loaders import find_latest_files, load_raw_data
 from fft.processors import (
     aggregate_to_icb,
     aggregate_to_national,
-    aggregate_to_site,
-    aggregate_to_trust,
     clean_icb_name,
     extract_fft_period,
     merge_collection_modes,
@@ -61,6 +59,7 @@ def process_level(df, service_type, level, parent_df=None):
 
     Returns:
         Processed DataFrame with suppression applied
+
     """
     logger.info(f"Processing {level} level...")
 
@@ -345,8 +344,6 @@ def run_pipeline(service_type: str, month: str = None) -> None:
     logger.info(f"Starting FFT pipeline for {service_type}")
 
     processing_config = PROCESSING_LEVELS[service_type]
-    levels = processing_config["levels"]
-    sheet_mapping = processing_config["sheet_mapping"]
 
     # Step 1: Find all raw data files
     logger.info("Finding raw data files...")
@@ -371,7 +368,7 @@ def run_pipeline(service_type: str, month: str = None) -> None:
         try:
             process_single_file(service_type, file_path, processing_config)
         except Exception as e:
-            logger.error(f"Failed to process {file_path.name}: {e}")
+            logger.error(f"Failed to process {file_path.name}: {e}", exc_info=True)
             continue  # Continue with next file
 
     logger.info("")
@@ -381,7 +378,6 @@ def run_pipeline(service_type: str, month: str = None) -> None:
 # %%
 def main():
     """Main entry point for FFT pipeline."""
-
     parser = argparse.ArgumentParser(
         description="FFT Pipeline - Process NHS Friends and Family Test data"
     )

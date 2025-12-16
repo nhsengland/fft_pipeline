@@ -1,7 +1,6 @@
 """Data transformation functions."""
 
 # %% Imports
-import numpy as np
 import pandas as pd
 
 from fft.config import (
@@ -46,6 +45,7 @@ def standardise_column_names(
     Traceback (most recent call last):
         ...
     KeyError: 'Unknown service type: unknown_service'
+
     """
     # Validate inputs first
     if service_type not in COLUMN_MAPS:
@@ -98,6 +98,7 @@ def extract_fft_period(df: pd.DataFrame) -> str:
     Traceback (most recent call last):
         ...
     KeyError: "DataFrame must contain 'Periodname' and 'Yearnumber' columns"
+
     """
     # Get period name and year from first row
     if "Periodname" not in df.columns or "Yearnumber" not in df.columns:
@@ -179,6 +180,7 @@ def remove_unwanted_columns(
     Traceback (most recent call last):
         ...
     KeyError: 'Unknown service type: unknown_service'
+
     """
     if service_type not in COLUMNS_TO_REMOVE:
         raise KeyError(f"Unknown service type: {service_type}")
@@ -207,6 +209,7 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
 
     Raises:
         KeyError: If any group_by column is missing
+
     """
     # Check required columns exist
     missing_cols = [col for col in group_by_cols if col not in df.columns]
@@ -282,6 +285,7 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     >>> result_empty = aggregate_to_icb(df_empty)
     >>> len(result_empty)
     0
+
     """
     return _aggregate_by_level(df, ["ICB_Code", "ICB_Name"])
 
@@ -334,6 +338,7 @@ def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
     >>> result_empty = aggregate_to_trust(df_empty)
     >>> len(result_empty)
     0
+
     """
     return _aggregate_by_level(df, ["Trust_Code", "Trust_Name"])
 
@@ -386,6 +391,7 @@ def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
     >>> result_empty = aggregate_to_site(df_empty)
     >>> len(result_empty)
     0
+
     """
     return _aggregate_by_level(df, ["Site_Code", "Site_Name"])
 
@@ -494,6 +500,7 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     0
     >>> len(result_df_empty)
     0
+
     """
     if "ICB_Code" not in df.columns:
         raise KeyError("DataFrame must contain 'ICB_Code' column")
@@ -580,6 +587,7 @@ def merge_collection_modes(
     >>> merged = merge_collection_modes(org, coll)
     >>> 'Mode SMS' in merged.columns
     True
+
     """
     mode_columns = [col for col in collection_df.columns if col.startswith("Mode ")]
 
@@ -613,6 +621,7 @@ def clean_icb_name(name: str) -> str:
     'SUSSEX ICB'
     >>> clean_icb_name("INDEPENDENT SECTOR PROVIDERS")
     'INDEPENDENT SECTOR PROVIDERS'
+
     """
     if not isinstance(name, str):
         return name
@@ -633,9 +642,10 @@ def convert_fft_period_to_datetime(fft_period: str):
         fft_period: FFT period string (e.g., 'Jul-25')
 
     Returns:
-        datetime object (e.g., datetime(2025, 7, 1))
+        pandas Timestamp object (e.g., Timestamp('2025-07-01'))
+
     """
-    import datetime
+    import pandas as pd
 
     month_abbrev, year = fft_period.split('-')
     year_full = 2000 + int(year)  # Convert 25 -> 2025
@@ -647,7 +657,7 @@ def convert_fft_period_to_datetime(fft_period: str):
     }
 
     month_num = month_map[month_abbrev]
-    return datetime.datetime(year_full, month_num, 1)
+    return pd.Timestamp(year_full, month_num, 1)
 
 
 def extract_summary_data(
@@ -676,9 +686,9 @@ def extract_summary_data(
 
     >>> import pandas as pd
     >>> import numpy as np
-    >>> from src.fft.processors import extract_summary_data
+    >>> from fft.processors import extract_summary_data
     >>> df = pd.DataFrame({
-    ...     'Collection': ['Jul-25', 'Jun-25', 'May-25'],
+    ...     'Collection': pd.to_datetime(['2025-07-01', '2025-06-01', '2025-05-01']),
     ...     'Inpatient Submitted': [150, 148, 145],
     ...     'Inpatient NHS Submitted': [134, 132, 130],
     ...     'Inpatient IS Submitted': [19, 18, 17],
@@ -717,8 +727,9 @@ def extract_summary_data(
     Traceback (most recent call last):
         ...
     ValueError: Period 'Jan-20' not found in time series data
+
     """
-    from fft.config import TIME_SERIES_PREFIXES, SUMMARY_COLUMNS
+    from fft.config import SUMMARY_COLUMNS, TIME_SERIES_PREFIXES
 
     if service_type not in TIME_SERIES_PREFIXES:
         raise KeyError(f"Unknown service type: '{service_type}'")
