@@ -55,6 +55,7 @@ def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
     >>> result_all = apply_first_level_suppression(df_all_suppress)
     >>> list(result_all['First_Level_Suppression'])
     [1, 1, 1, 1]
+
     """
     if "Total Responses" not in df.columns:
         raise KeyError("'Total Responses' column not found in DataFrame")
@@ -121,6 +122,7 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
     >>> result_zeros = add_rank_column(df_zeros, 'ICB_Code')
     >>> list(result_zeros['Rank'])
     [0, 0]
+
     """
     if "Total Responses" not in df.columns:
         raise KeyError("'Total Responses' column not found in DataFrame")
@@ -208,6 +210,7 @@ def apply_second_level_suppression(
     Traceback (most recent call last):
         ...
     KeyError: "Required columns missing: ['First_Level_Suppression']"
+
     """
     required_cols = ["First_Level_Suppression", "Rank"]
     missing_cols = [col for col in required_cols if col not in df.columns]
@@ -345,6 +348,7 @@ def apply_cascade_suppression(
     ... )
     >>> list(result_one['Cascade_Suppression'])
     [1]
+
     """
     # Validate columns
     if parent_code_col not in parent_df.columns:
@@ -455,6 +459,7 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
     ['*', '*']
     >>> list(result_all['Percentage_Positive'])
     ['*', '*']
+
     """
     # Find all suppression flag columns
     suppression_cols = [col for col in df.columns if "Suppression" in col]

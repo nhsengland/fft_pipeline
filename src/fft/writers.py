@@ -16,6 +16,8 @@ from fft.config import (
     TEMPLATE_CONFIG,
     TEMPLATES_DIR,
 )
+from fft.loaders import load_collections_overview
+from fft.processors import extract_summary_data
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +49,14 @@ def load_template(service_type: str) -> Workbook:
     KeyError: "Unknown service type: 'unknown_service'"
 
     # Edge case: Missing template file
-    >>> from src.fft.config import TEMPLATE_CONFIG
+    >>> from fft.config import TEMPLATE_CONFIG
     >>> TEMPLATE_CONFIG['test_missing'] = {'template_file': 'nonexistent.xlsm'}
-    >>> load_template('test_missing')
+    >>> load_template('test_missing')  # doctest: +ELLIPSIS
     Traceback (most recent call last):
         ...
     FileNotFoundError: Template not found: nonexistent.xlsm
     >>> del TEMPLATE_CONFIG['test_missing']
+
     """
     if service_type not in TEMPLATE_CONFIG:
         raise KeyError(f"Unknown service type: '{service_type}'")
@@ -117,6 +120,7 @@ def write_dataframe_to_sheet(
     >>> write_dataframe_to_sheet(wb, df_empty, 'ICB', start_row=20)
     >>> wb['ICB'].cell(row=20, column=1).value is None
     True
+
     """
     if sheet_name not in workbook.sheetnames:
         raise KeyError(f"Sheet '{sheet_name}' not found in workbook")
@@ -138,7 +142,12 @@ def write_bs_lookup_data(
 
     The BS sheet has two main sections:
     1. Reference Lists (U:Z) - Full hierarchy from ward data
-    2. Linked Lists (AE+) - Deduplicated, sorted lists for each tab's dropdowns
+    2. Linked Lists (AE+) - Deduplicated pairs, each column sorted independently
+
+    The VBA logic for linked lists:
+    - Columns are grouped into pairs (e.g., Trust Code + Trust Name)
+    - Each pair is deduplicated together (keeping Code/Name aligned)
+    - Then each column is sorted independently (breaking the pairing)
 
     Args:
         workbook: Openpyxl Workbook object
@@ -151,21 +160,32 @@ def write_bs_lookup_data(
     Raises:
         KeyError: If BS sheet doesn't exist or required columns missing
 
-    >>> from src.fft.writers import load_template, write_bs_lookup_data
+    >>> from fft.writers import load_template, write_bs_lookup_data
     >>> import pandas as pd
     >>> wb = load_template('inpatient')
     >>> df = pd.DataFrame({
-    ...     'ICB_Code': ['ABC', 'ABC', 'DEF'],
-    ...     'ICB_Name': ['ICB North', 'ICB North', 'ICB South'],
-    ...     'Trust_Code': ['T01', 'T01', 'T02'],
-    ...     'Trust_Name': ['Trust A', 'Trust A', 'Trust B'],
-    ...     'Site_Code': ['S01', 'S02', 'S03'],
-    ...     'Site_Name': ['Site 1', 'Site 2', 'Site 3'],
-    ...     'Ward_Name': ['Ward 1', 'Ward 2', 'Ward 3']
+    ...     'ICB_Code': ['QE1', 'QE1', 'QWO'],
+    ...     'Trust_Code': ['RXA', 'RXA', 'RY6'],
+    ...     'Trust_Name': ['Trust Alpha', 'Trust Alpha', 'Trust Beta'],
+    ...     'Site_Code': ['RXA01', 'RXA02', 'RY601'],
+    ...     'Site_Name': ['Site One', 'Site Two', 'Site Three'],
+    ...     'Ward_Name': ['Ward A', 'Ward B', 'Ward C']
     ... })
     >>> write_bs_lookup_data(wb, df, 'inpatient')
-    >>> wb['BS'].cell(row=2, column=21).value
-    'ABC'
+
+    # Reference list (U:Z) starts at row 2
+    >>> wb['BS'].cell(row=2, column=21).value  # U2 = ICB_Code
+    'QE1'
+    >>> wb['BS'].cell(row=2, column=26).value  # Z2 = Ward_Name
+    'Ward A'
+
+    # Trusts linked list (AE:AF) - dedupe pairs, sort independently
+    >>> wb['BS'].cell(row=1, column=31).value  # AE1 = Trust Code (sorted)
+    'RXA'
+    >>> wb['BS'].cell(row=2, column=31).value  # AE2 = Trust Code (sorted)
+    'RY6'
+    >>> wb['BS'].cell(row=1, column=32).value  # AF1 = Trust Name (sorted independently)
+    'Trust Alpha'
 
     # Edge case: Missing BS sheet
     >>> from openpyxl import Workbook as NewWorkbook
@@ -176,12 +196,13 @@ def write_bs_lookup_data(
     KeyError: "Sheet 'BS' not found in template workbook"
 
     # Edge case: Missing required columns
-    >>> df_missing = pd.DataFrame({'ICB_Code': ['ABC']})
+    >>> df_missing = pd.DataFrame({'ICB_Code': ['QE1']})
     >>> wb2 = load_template('inpatient')
     >>> write_bs_lookup_data(wb2, df_missing, 'inpatient')
     Traceback (most recent call last):
         ...
-    KeyError: "Required column 'ICB_Name' not found in DataFrame"
+    KeyError: "Required column 'Trust_Code' not found in DataFrame"
+
     """
     if "BS" not in workbook.sheetnames:
         raise KeyError("Sheet 'BS' not found in template workbook")
@@ -207,31 +228,32 @@ def write_bs_lookup_data(
         for col_idx, value in enumerate(row, start=ref_start_col):
             sheet.cell(row=row_idx, column=col_idx).value = value
 
-    # 2. Write Linked Lists (deduplicated, sorted for each tab)
+    # 2. Write Linked Lists (dedupe pairs, sort each column independently)
     for level, level_config in config["linked_lists"].items():
         start_col = level_config["start_col"]
-        columns = level_config["columns"]
+        pairs = level_config["pairs"]
 
-        # Extract unique combinations, sort alphabetically
-        unique_df = (
-            ward_df[columns]
-            .drop_duplicates()
-            .sort_values(by=columns)
-            .reset_index(drop=True)
-        )
+        col_offset = 0
+        for pair in pairs:
+            # Deduplicate the pair together
+            unique_pair = ward_df[pair].drop_duplicates()
 
-        # Write each column separately (they get sorted independently)
-        for col_offset, col_name in enumerate(columns):
-            col_values = (
-                unique_df[col_name]
-                .astype(str)
-                .drop_duplicates()
-                .sort_values()
-                .reset_index(drop=True)
-            )
+            # Sort and write each column independently
+            for pair_col_idx, col_name in enumerate(pair):
+                sorted_values = (
+                    unique_pair[col_name]
+                    .drop_duplicates()
+                    .astype(str)  # Convert to string to handle mixed types
+                    .sort_values()
+                    .reset_index(drop=True)
+                )
 
-            for row_idx, value in enumerate(col_values, start=1):
-                sheet.cell(row=row_idx, column=start_col + col_offset).value = value
+                for row_idx, value in enumerate(sorted_values, start=2):
+                    sheet.cell(
+                        row=row_idx, column=start_col + col_offset + pair_col_idx
+                    ).value = value
+
+            col_offset += len(pair)
 
 
 # %%
@@ -271,8 +293,8 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
         ...
     KeyError: "Sheet 'Notes' not found in workbook"
 
-    # Edge case: Missing configuration for service type
-    >>> from src.fft.config import PERIOD_LABEL_CONFIG
+    # Edge case: Missing configuration for service type - test graceful handling
+    >>> from fft.config import PERIOD_LABEL_CONFIG
     >>> PERIOD_LABEL_CONFIG['test_missing'] = {
     ...     'notes_title': {
     ...         'sheet': 'Notes',
@@ -280,13 +302,14 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
     ...         'template': 'Test FFT Data - {period}',
     ...     }
     ... }
-    >>> update_period_labels(wb, 'test_missing', 'Aug-24') # No error should be raised
+    >>> update_period_labels(wb, 'test_missing', 'Aug-24') # Should work with valid config
     >>> del PERIOD_LABEL_CONFIG['test_missing']
 
-    # Edge case: Empty configuration for service type
+    # Edge case: Empty configuration for service type - no labels to update
     >>> PERIOD_LABEL_CONFIG['test_empty'] = {}
-    >>> update_period_labels(wb, 'test_empty', 'Aug-24')  # No error should be raised
+    >>> update_period_labels(wb, 'test_empty', 'Aug-24')  # Handle empty config gracefully
     >>> del PERIOD_LABEL_CONFIG['test_empty']
+
     """
     if service_type not in PERIOD_LABEL_CONFIG:
         raise KeyError(f"Unknown service type: '{service_type}'")
@@ -357,6 +380,7 @@ def write_england_totals(
     Traceback (most recent call last):
         ...
     KeyError: "'Submitter_Type' column not found in national_df"
+
     """
     if service_type not in TEMPLATE_CONFIG:
         raise KeyError(f"Unknown service type: '{service_type}'")
@@ -462,7 +486,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     # Edge case: Cell contains non-numeric value
     >>> wb['ICB'].cell(row=16, column=5).value = "text"
     >>> format_percentage_columns(wb, 'inpatient')  # Should still format other cells
-    >>> wb['ICB'].cell(row=15, column=5).number_format  # Verify previous cell still formatted
+    >>> wb['ICB'].cell(row=15, column=5).number_format  # Verify previous cell formatting
     '0%'
 
     # Error case: Unknown service type
@@ -470,6 +494,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     Traceback (most recent call last):
         ...
     KeyError: "Unknown service type: 'unknown'"
+
     """
     if service_type not in PERCENTAGE_COLUMN_CONFIG:
         raise KeyError(f"Unknown service type: '{service_type}'")
@@ -508,28 +533,40 @@ def save_output(workbook: Workbook, service_type: str, fft_period: str) -> Path:
     Raises:
         KeyError: If service_type is not configured
 
-    >>> from src.fft.writers import load_template, save_output
+    >>> from fft.writers import load_template, save_output
+    >>> import tempfile
+    >>> from pathlib import Path
+    >>> import fft.writers as writers_module
     >>> wb = load_template('inpatient')
-    >>> output_path = save_output(wb, 'inpatient', 'Aug-24')
-    >>> output_path.name
-    'FFT-inpatient-data-Aug-24.xlsm'
-    >>> output_path.exists()
-    True
+    >>> with tempfile.TemporaryDirectory() as temp_dir:
+    ...     original_outputs_dir = writers_module.OUTPUTS_DIR
+    ...     writers_module.OUTPUTS_DIR = Path(temp_dir) / "outputs"
+    ...     output_path = save_output(wb, 'inpatient', 'Aug-24')
+    ...     filename = output_path.name
+    ...     file_exists = output_path.exists()
+    ...     writers_module.OUTPUTS_DIR = original_outputs_dir
+    ...     (filename, file_exists)
+    ('FFT-inpatient-data-Aug-24.xlsm', True)
 
     # Edge case: FFT period with complex format
-    >>> output_path = save_output(wb, 'inpatient', 'Dec-2024')
-    >>> output_path.name
-    'FFT-inpatient-data-Dec-2024.xlsm'
-    >>> output_path.exists()
-    True
+    >>> with tempfile.TemporaryDirectory() as temp_dir:
+    ...     original_outputs_dir = writers_module.OUTPUTS_DIR
+    ...     writers_module.OUTPUTS_DIR = Path(temp_dir) / "outputs"
+    ...     output_path = save_output(wb, 'inpatient', 'Dec-2024')
+    ...     filename = output_path.name
+    ...     file_exists = output_path.exists()
+    ...     writers_module.OUTPUTS_DIR = original_outputs_dir
+    ...     (filename, file_exists)
+    ('FFT-inpatient-data-Dec-2024.xlsm', True)
 
     # Edge case: Outputs directory creation when missing
-    >>> from src.fft.config import OUTPUTS_DIR
-    >>> import shutil
-    >>> if OUTPUTS_DIR.exists():
-    ...     shutil.rmtree(OUTPUTS_DIR)
-    >>> output_path = save_output(wb, 'inpatient', 'Sep-24')
-    >>> output_path.exists()
+    >>> with tempfile.TemporaryDirectory() as temp_dir:
+    ...     original_outputs_dir = writers_module.OUTPUTS_DIR
+    ...     writers_module.OUTPUTS_DIR = Path(temp_dir) / "outputs"
+    ...     output_path = save_output(wb, 'inpatient', 'Sep-24')
+    ...     file_exists = output_path.exists()
+    ...     writers_module.OUTPUTS_DIR = original_outputs_dir
+    ...     file_exists
     True
 
     # Error case: Unknown service type
@@ -537,6 +574,7 @@ def save_output(workbook: Workbook, service_type: str, fft_period: str) -> Path:
     Traceback (most recent call last):
         ...
     KeyError: "Unknown service type: 'unknown'"
+
     """
     if service_type not in TEMPLATE_CONFIG:
         raise KeyError(f"Unknown service type: '{service_type}'")
@@ -596,6 +634,7 @@ def write_summary_sheet(
     150
     >>> wb['Summary'].cell(row=9, column=3).value
     134
+
     """
     if "Summary" not in workbook.sheetnames:
         raise KeyError("Sheet 'Summary' not found in workbook")
@@ -658,16 +697,33 @@ def calculate_previous_period(current_period: str) -> str:
     'Dec-24'
     >>> calculate_previous_period('Apr-24')
     'Mar-24'
-    """
-    from fft.config import MONTH_ABBREV
 
+    """
     # Create reverse mapping from abbreviation to month number
-    abbrev_to_num = {abbrev: num for num, abbrev in enumerate(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                                                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], 1)}
+    abbrev_to_num = {
+        abbrev: num
+        for num, abbrev in enumerate(
+            [
+                "Jan",
+                "Feb",
+                "Mar",
+                "Apr",
+                "May",
+                "Jun",
+                "Jul",
+                "Aug",
+                "Sep",
+                "Oct",
+                "Nov",
+                "Dec",
+            ],
+            1,
+        )
+    }
     num_to_abbrev = {num: abbrev for abbrev, num in abbrev_to_num.items()}
 
     # Parse current period
-    month_abbrev, year = current_period.split('-')
+    month_abbrev, year = current_period.split("-")
     month_num = abbrev_to_num[month_abbrev]
     year_num = int(year)
 
@@ -687,10 +743,13 @@ def calculate_previous_period(current_period: str) -> str:
 
 
 # %%
-def populate_summary_sheet(workbook: Workbook, service_type: str, current_period: str) -> None:
+def populate_summary_sheet(
+    workbook: Workbook, service_type: str, current_period: str
+) -> None:
     """Populate Summary sheet with Collections Overview time series data.
 
-    Loads Collections Overview data, extracts summary metrics, and writes to template Summary sheet.
+    Loads Collections Overview data, extracts summary metrics,
+    and writes to template Summary sheet.
 
     Args:
         workbook: Loaded template workbook
@@ -704,10 +763,8 @@ def populate_summary_sheet(workbook: Workbook, service_type: str, current_period
         FileNotFoundError: If Collections Overview file not found
         KeyError: If service type not supported or data missing
         ValueError: If periods not found in Collections Overview data
-    """
-    from fft.loaders import load_collections_overview
-    from fft.processors import extract_summary_data
 
+    """
     try:
         # Calculate previous period
         previous_period = calculate_previous_period(current_period)
@@ -717,10 +774,7 @@ def populate_summary_sheet(workbook: Workbook, service_type: str, current_period
 
         # Extract summary data for this service type and periods
         summary_data = extract_summary_data(
-            time_series_df,
-            service_type,
-            current_period,
-            previous_period
+            time_series_df, service_type, current_period, previous_period
         )
 
         # Write to Summary sheet

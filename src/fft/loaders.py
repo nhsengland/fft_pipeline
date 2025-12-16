@@ -6,10 +6,10 @@ from pathlib import Path
 import pandas as pd
 
 from fft.config import (
-    FILE_PATTERNS,
-    RAW_DIR,
     COLLECTIONS_OVERVIEW_DIR,
     COLLECTIONS_OVERVIEW_FILE,
+    FILE_PATTERNS,
+    RAW_DIR,
 )
 
 
@@ -62,6 +62,7 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
     Traceback (most recent call last):
         ...
     FileNotFoundError: [Errno 2] No such file or directory: 'data/inputs/raw/non_existent_file.xlsx'
+
     """
     excel_file = pd.ExcelFile(file_path)
 
@@ -101,6 +102,7 @@ def identify_service_type(filename: str) -> str:
     Traceback (most recent call last):
         ...
     ValueError: Unknown service type in filename: FFT_Unknown_V1_May.xlsx
+
     """
     filename_lower = filename.lower()
     if "ip" in filename_lower or "inpatient" in filename_lower:
@@ -150,6 +152,7 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     Traceback (most recent call last):
         ...
     ValueError: Unknown service type: unknown_service
+
     """
     pattern = FILE_PATTERNS.get(service_type)
     if not pattern:
@@ -180,6 +183,7 @@ def load_collections_overview(file: str = COLLECTIONS_OVERVIEW_FILE) -> pd.DataF
     Traceback (most recent call last):
         ...
     FileNotFoundError: Collections Overview not found: nonexistent.xlsm
+
     """
     file_path = COLLECTIONS_OVERVIEW_DIR / file
 

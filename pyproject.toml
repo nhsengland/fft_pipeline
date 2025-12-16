@@ -26,13 +26,15 @@ target-version = "py313"
 exclude = [""]
 
 [tool.ruff.lint]
-# Simple rules: pylint + isort
-select = [
-    "E",                            # pycodestyle errors
-    "W",                            # pycodestyle warnings
-    "I",                            # isort (import sorting)
-    "PL",                           # pylint rules
-]
+# Enable rule sets:
+# E = pycodestyle errors
+# W = pycodestyle warnings  
+# F = pyflakes (undefined names, unused imports, etc.)
+# I = isort (import sorting)
+# D = pydocstyle (docstring conventions)
+# UP = pyupgrade (modernise syntax)
+# PL = pylint rules
+select = ["E", "W", "F", "I", "D", "UP", "PL"]
 exclude = [""]
 
 [tool.ruff.lint.isort]
