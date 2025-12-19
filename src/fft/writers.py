@@ -180,11 +180,15 @@ def write_bs_lookup_data(
     'Ward A'
 
     # Trusts linked list (AE:AF) - dedupe pairs, sort independently
-    >>> wb['BS'].cell(row=1, column=31).value  # AE1 = Trust Code (sorted)
+    >>> wb['BS'].cell(row=1, column=31).value  # AE1 = Template header (unchanged)
+    'Code…'
+    >>> wb['BS'].cell(row=2, column=31).value  # AE2 = First Trust Code (sorted)
     'RXA'
-    >>> wb['BS'].cell(row=2, column=31).value  # AE2 = Trust Code (sorted)
+    >>> wb['BS'].cell(row=3, column=31).value  # AE3 = Second Trust Code (sorted)
     'RY6'
-    >>> wb['BS'].cell(row=1, column=32).value  # AF1 = Trust Name (sorted independently)
+    >>> wb['BS'].cell(row=1, column=32).value  # AF1 = Template header (unchanged)
+    'Name…'
+    >>> wb['BS'].cell(row=2, column=32).value  # AF2 = First Trust Name (sorted independently)
     'Trust Alpha'
 
     # Edge case: Missing BS sheet
