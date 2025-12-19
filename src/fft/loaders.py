@@ -25,6 +25,7 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
 
     >>> from pathlib import Path
     >>> import pandas as pd
+    >>> from fft.loaders import load_raw_data
     >>> data = load_raw_data(Path("data/inputs/raw/FFT_Inpatients_V1 Jul-25.xlsx"))
     >>> isinstance(data, dict)
     True
@@ -82,6 +83,7 @@ def identify_service_type(filename: str) -> str:
     Returns:
         'inpatient', 'ae', or 'ambulance'
 
+    >>> from fft.loaders import identify_service_type
     >>> identify_service_type("FFT_Inpatients_V1 Jul-25.xlsx")
     'inpatient'
     >>> identify_service_type("FFT_A&E_V1 Jul-25.xlsx")
@@ -129,6 +131,8 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     Raises:
         ValueError: If service_type is unknown.
 
+    >>> from fft.loaders import find_latest_files
+    >>> from pathlib import Path
     >>> files = find_latest_files("inpatient", n=2)
     >>> all(isinstance(f, Path) for f in files)
     True
