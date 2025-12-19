@@ -952,15 +952,44 @@ def post():
 
 def cleanup_port_5001():
     """Kill any processes using port 5001 to ensure clean startup."""
+    import platform
     import time
+    import re
+
     try:
-        result = subprocess.run(["lsof", "-ti:5001"], capture_output=True, text=True)
-        if result.returncode == 0 and result.stdout.strip():
-            pids = result.stdout.strip().split()
-            for pid in pids:
-                subprocess.run(["kill", pid], capture_output=True)
-            logger.info(f"Cleaned up processes on port 5001: {pids}")
-            time.sleep(0.5)  # Wait for processes to die
+        if platform.system() == "Windows":
+            # Windows: use netstat and taskkill
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                pids = []
+                for line in result.stdout.split('\n'):
+                    if ':5001' in line and 'LISTENING' in line:
+                        # Extract PID from last column
+                        parts = line.split()
+                        if parts:
+                            pid = parts[-1]
+                            if pid.isdigit():
+                                pids.append(pid)
+
+                for pid in pids:
+                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+
+                if pids:
+                    logger.info(f"Cleaned up processes on port 5001: {pids}")
+                    time.sleep(0.5)
+        else:
+            # Unix/Linux/macOS: use lsof and kill
+            result = subprocess.run(["lsof", "-ti:5001"], capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                pids = result.stdout.strip().split()
+                for pid in pids:
+                    subprocess.run(["kill", pid], capture_output=True)
+                logger.info(f"Cleaned up processes on port 5001: {pids}")
+                time.sleep(0.5)
     except Exception as e:
         logger.debug(f"Port cleanup failed (likely no processes to clean): {e}")
 
