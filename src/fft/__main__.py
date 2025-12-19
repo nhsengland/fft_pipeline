@@ -46,68 +46,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# TODO: Can I remove this function?
-# %%
-def process_level(df, service_type, level, parent_df=None):
-    """Process a single geographic level with suppression.
-
-    Args:
-        df: DataFrame for this level
-        service_type: 'inpatient', 'ae', or 'ambulance'
-        level: 'ward', 'site', 'organisation', or 'icb'
-        parent_df: Parent level DataFrame for cascade suppression (optional)
-
-    Returns:
-        Processed DataFrame with suppression applied
-
-    """
-    logger.info(f"Processing {level} level...")
-
-    # Standardise and clean only for raw data levels (not aggregated ICB)
-    if level != "icb":
-        df = standardise_column_names(df, service_type, level)
-        df = remove_unwanted_columns(df, service_type, level)
-
-    # Determine grouping column for ranking/suppression
-    group_by_map = {
-        "ward": "Site_Code",
-        "site": "Trust_Code",
-        "organisation": "ICB_Code",
-        "icb": None,
-    }
-    group_by_col = group_by_map.get(level)
-
-    # Add ranking
-    df = add_rank_column(df, group_by_col)
-
-    # Apply first-level suppression
-    df = apply_first_level_suppression(df)
-
-    # Apply second-level suppression
-    df = apply_second_level_suppression(df, group_by_col)
-
-    # Apply cascade suppression from parent if available
-    if parent_df is not None:
-        parent_code_col_map = {
-            "organisation": "ICB_Code",
-            "site": "Trust_Code",
-            "ward": "Site_Code",
-        }
-        parent_code_col = parent_code_col_map.get(level)
-        if parent_code_col:
-            df = apply_cascade_suppression(
-                parent_df, df, parent_code_col, parent_code_col, "Suppression_Required"
-            )
-
-    # Confirm overall suppression required
-    suppression_cols = [col for col in df.columns if "Suppression" in col]
-    df["Suppression_Required"] = df[suppression_cols].max(axis=1)
-
-    # Apply suppression (replace values with *)
-    # df = suppress_values(df)
-
-    return df
-
 
 # %%
 def process_single_file(
