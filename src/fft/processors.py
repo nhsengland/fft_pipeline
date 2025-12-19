@@ -29,6 +29,7 @@ def standardise_column_names(
         KeyError: If service_type or level is invalid
 
     >>> import pandas as pd
+    >>> from fft.processors import standardise_column_names
     >>> raw_df = pd.DataFrame({"Parent org code": [1, 2], "Parent name": ["Org A", "Org B"]})
     >>> std_df = standardise_column_names(raw_df, "inpatient", "organisation")
     >>> list(std_df.columns)
@@ -76,6 +77,7 @@ def extract_fft_period(df: pd.DataFrame) -> str:
         ValueError: If period name or year format is invalid
 
     >>> import pandas as pd
+    >>> from fft.processors import extract_fft_period
     >>> df = pd.DataFrame({'Periodname': ['AUGUST'], 'Yearnumber': ['2024-25']})
     >>> extract_fft_period(df)
     'Aug-24'
@@ -158,6 +160,7 @@ def remove_unwanted_columns(
         KeyError: If service_type or level is invalid
 
     >>> import pandas as pd
+    >>> from fft.processors import remove_unwanted_columns
     >>> df = pd.DataFrame({'Yearnumber': [2024], 'Periodname': ['AUG'], 'ICB_Code': ['ABC']})
     >>> cleaned = remove_unwanted_columns(df, 'inpatient', 'organisation')
     >>> list(cleaned.columns)
