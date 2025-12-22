@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 # %%
-def process_single_file(
+def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pipeline with 14 steps
     service_type: str, file_path: Path, processing_config: dict
 ) -> None:
     """Process a single raw data file and generate output report."""
@@ -121,11 +121,9 @@ def process_single_file(
 
     # Step 4.6: Clean ICB names
     logger.info("Cleaning ICB names...")
-    for level in cleaned_data:
-        if "ICB_Name" in cleaned_data[level].columns:
-            cleaned_data[level]["ICB_Name"] = cleaned_data[level]["ICB_Name"].apply(
-                clean_icb_name
-            )
+    for level, df in cleaned_data.items():
+        if "ICB_Name" in df.columns:
+            cleaned_data[level]["ICB_Name"] = df["ICB_Name"].apply(clean_icb_name)
 
     # Step 5: Aggregate to ICB level
     logger.info("Aggregating to ICB level...")
@@ -314,7 +312,7 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
 
 # %%
 def main():
-    """Main entry point for FFT pipeline."""
+    """Process FFT pipeline data from command line arguments."""
     parser = argparse.ArgumentParser(
         description="FFT Pipeline - Process NHS Friends and Family Test data"
     )
