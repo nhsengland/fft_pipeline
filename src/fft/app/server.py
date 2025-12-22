@@ -1,13 +1,13 @@
 """FastHTML web interface for FFT Pipeline."""
 
+import logging
 import subprocess
 import webbrowser
-import logging
 from pathlib import Path
 
 from fasthtml.common import *
 
-from fft.config import RAW_DIR, OUTPUTS_DIR, SERVICE_TYPES, FILE_PATTERNS
+from fft.config import FILE_PATTERNS, OUTPUTS_DIR, RAW_DIR, SERVICE_TYPES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -537,7 +537,7 @@ button:focus-visible {
 }
 """)
 
-app, rt = fast_app(hdrs=[CSS])
+app, rt = fast_app(hdrs=(CSS,))
 
 # Global progress tracking (simple and reliable)
 pipeline_status = {
@@ -551,7 +551,7 @@ pipeline_status = {
 
 
 # --- Helpers ---
-def get_raw_files(service_type: str = None) -> list[Path]:
+def get_raw_files(service_type: str | None = None) -> list[Path]:
     if not RAW_DIR.exists():
         return []
     pattern = FILE_PATTERNS.get(service_type, "*.xlsx") if service_type else "*.xlsx"
@@ -561,6 +561,7 @@ def get_raw_files(service_type: str = None) -> list[Path]:
 def get_months(service_type: str) -> list[str]:
     """Extract month patterns (e.g., 'Aug-25') from filenames."""
     import re
+
     from fft.config import MONTH_ABBREV
 
     # Create pattern to match month-year format (e.g., Aug-25, Sep-24)
@@ -617,7 +618,7 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
 
         # Run the actual command
         update_progress(50, "Running", "Executing FFT pipeline...")
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=project_root)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=project_root)
 
         update_progress(75, "Finishing", "Finalizing output...")
 
@@ -654,8 +655,15 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
 
 
 # --- Progress Components ---
-def progress_bar(progress: int):
-    """Create a progress bar component."""
+def create_progress_bar(progress: int):
+    """Create a progress bar component.
+
+    Args:
+        progress: Integer percentage (0-100)
+
+    Returns:
+        A Div component containing the progress bar
+    """
     return Div(
         Div(
             style=f"width: {progress}%",
@@ -679,10 +687,21 @@ def progress_display():
         )
 
     # Show progress bar and status only while running
+    progress = pipeline_status["progress"]
+    stage = pipeline_status["stage"]
+    message = pipeline_status["message"]
+
+    # Type guard: ensure progress is an int
+    if not isinstance(progress, int):
+        progress = 0
+
+    # Create progress bar component
+    progress_bar_component = create_progress_bar(progress)
+
     content = [
-        progress_bar(pipeline_status["progress"]),
-        Div(pipeline_status["stage"], cls="progress-stage"),
-        Div(pipeline_status["message"], cls="progress-message"),
+        progress_bar_component,
+        Div(str(stage), cls="progress-stage"),
+        Div(str(message), cls="progress-message"),
         Script("""
             document.getElementById('main-form').classList.add('form-disabled');
             var submitBtn = document.querySelector('[type="submit"]');
@@ -759,7 +778,7 @@ def file_list_box(files):
     )
 
 
-def status_box(success: bool, msg: str, log: str = None):
+def status_box(success: bool, msg: str, log: str | None = None):
     cls = "status success" if success else "status error"
     icon = "✓" if success else "✗"
 
@@ -864,8 +883,18 @@ def get_status_check():
         elif pipeline_status["success"] is not None:
             # Pipeline complete, show final result
             success = pipeline_status["success"]
+
+            # Type guard: ensure success is a bool
+            if not isinstance(success, bool):
+                success = False
+
             # Get the logs from the global state if available
-            log_output = "\n".join(pipeline_status["logs"]) if pipeline_status["logs"] else "Pipeline execution completed."
+            logs = pipeline_status["logs"]
+            if logs and isinstance(logs, list):
+                # Type guard: ensure logs are strings
+                log_output = "\n".join(str(log) for log in logs)
+            else:
+                log_output = "Pipeline execution completed."
 
             logger.info(f"Pipeline completed with success={success}, showing final result")
 
@@ -910,7 +939,6 @@ async def post(service: str, month: str):
         return status_box(False, "Please select a service type")
 
     # Start the pipeline asynchronously so progress can be seen
-    import asyncio
     import threading
 
     def run_pipeline_thread():
@@ -954,14 +982,13 @@ def cleanup_port_5001():
     """Kill any processes using port 5001 to ensure clean startup."""
     import platform
     import time
-    import re
 
     try:
         if platform.system() == "Windows":
             # Windows: use netstat and taskkill
             result = subprocess.run(
                 ["netstat", "-ano"],
-                capture_output=True,
+                check=False, capture_output=True,
                 text=True
             )
             if result.returncode == 0:
@@ -976,18 +1003,18 @@ def cleanup_port_5001():
                                 pids.append(pid)
 
                 for pid in pids:
-                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                    subprocess.run(["taskkill", "/F", "/PID", pid], check=False, capture_output=True)
 
                 if pids:
                     logger.info(f"Cleaned up processes on port 5001: {pids}")
                     time.sleep(0.5)
         else:
             # Unix/Linux/macOS: use lsof and kill
-            result = subprocess.run(["lsof", "-ti:5001"], capture_output=True, text=True)
+            result = subprocess.run(["lsof", "-ti:5001"], check=False, capture_output=True, text=True)
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split()
                 for pid in pids:
-                    subprocess.run(["kill", pid], capture_output=True)
+                    subprocess.run(["kill", pid], check=False, capture_output=True)
                 logger.info(f"Cleaned up processes on port 5001: {pids}")
                 time.sleep(0.5)
     except Exception as e:
