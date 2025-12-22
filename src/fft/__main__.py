@@ -46,7 +46,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-
 # %%
 def process_single_file(
     service_type: str, file_path: Path, processing_config: dict
@@ -277,7 +276,7 @@ def process_single_file(
 
 
 # %%
-def run_pipeline(service_type: str, month: str = None) -> None:
+def run_pipeline(service_type: str, month: str | None = None) -> None:
     """Run the full FFT pipeline for a service type."""
     logger.info(f"Starting FFT pipeline for {service_type}")
 
@@ -337,11 +336,17 @@ def main():
     args = parser.parse_args()
 
     # Determine service type from args
-    service_type = None
+    service_type: str | None = None
     for flag, stype in SERVICE_TYPES.items():
         if getattr(args, flag, False):
             service_type = stype
             break
+
+    if service_type is None:
+        parser.error("No service type specified")
+        sys.exit(1)  # parser.error() doesn't return, but type checker doesn't know
+
+    assert service_type is not None  # Help type checker understand service_type is str
 
     try:
         run_pipeline(service_type, month=args.month)
