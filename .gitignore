@@ -1,16 +1,15 @@
-logfiles/
-mock_files/
-inputs/
-outputs/
-rolling_total_file/
-fft_pipeline.log
-*.backup
-*.processed
-*_processed.xlsx
-.hypothesis
+# Data files - never commit patient data to GitHub
+data/inputs/raw/*
+data/inputs/collections_overview/*
+data/inputs/suppression_files/*
+data/outputs/*
 
-# Data directory - never commit to GitHub
-data/
+# But keep .gitkeep files and templates
+!data/**/.gitkeep
+!data/inputs/templates/*.xlsm
+
+# FastHTML
+.sesskey
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -228,6 +227,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
-# Claude helper files directory
-.claude/
