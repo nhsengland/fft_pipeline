@@ -62,7 +62,8 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
     >>> load_raw_data(Path("data/inputs/raw/non_existent_file.xlsx"))
     Traceback (most recent call last):
         ...
-    FileNotFoundError: [Errno 2] No such file or directory: 'data/inputs/raw/non_existent_file.xlsx'
+    FileNotFoundError: [Errno 2] No such file or directory: \
+'data/inputs/raw/non_existent_file.xlsx'
 
     """
     excel_file = pd.ExcelFile(file_path)

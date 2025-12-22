@@ -4,6 +4,9 @@ import pandas as pd
 
 from fft.config import AGGREGATION_COLUMNS, SUPPRESSION_THRESHOLD
 
+# Constants for suppression logic
+SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
+
 
 # %%
 def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
@@ -162,9 +165,10 @@ def apply_second_level_suppression(
     Rank 2 also gets flagged to prevent reverse calculation.
 
     Reverse calculation example:
-    If ICB has 3 trusts with responses [*, 80, 150] and ICB total is 232,
-    someone could calculate: 232 - 80 - 150 = 2 (revealing the suppressed value).
-    By also suppressing Rank 2, we get [*, *, 150], preventing this calculation.
+    If ICB has 3 trusts with responses [*, 80, 150] and ICB total is
+    232, someone could calculate: 232 - 80 - 150 = 2 (revealing the
+    suppressed value). By also suppressing Rank 2, we get [*, *, 150],
+    preventing this calculation.
 
     Grouping logic by level:
     - ICB level: No grouping (group_by_col=None)
@@ -230,7 +234,7 @@ def apply_second_level_suppression(
             and df.iloc[prev_idx]["First_Level_Suppression"] == 1
         ):
             # Check if current row is Rank 2
-            if df.iloc[i]["Rank"] == 2:
+            if df.iloc[i]["Rank"] == SECOND_RANK:
                 # Check if same group (if grouping applies)
                 if (
                     group_by_col is None
@@ -252,31 +256,33 @@ def apply_cascade_suppression(
     """Apply cascade suppression from parent to child level.
 
     KEY DISTINCTION:
-    - First/Second level suppression: Based on the child's OWN response count
-    - Cascade suppression: Based on the PARENT's suppression status
+    - First/Second level suppression: Based on child's OWN response count
+    - Cascade suppression: Based on PARENT's suppression status
 
-    When a parent organization is already suppressed (at its own level), we must
-    also suppress its children to prevent reverse calculation using parent totals.
+    When a parent organization is already suppressed (at its own level),
+    we must also suppress its children to prevent reverse calculation
+    using parent totals.
 
     Example showing why cascade is needed:
 
-    ICB North has 232 responses and IS SUPPRESSED at ICB level (shown as *).
-    Its 3 trusts show:
+    ICB North has 232 responses and IS SUPPRESSED at ICB level (shown
+    as *). Its 3 trusts show:
     - Trust A: 150 responses → Shown
     - Trust B: 80 responses → Shown
     - Trust C: 2 responses → Already suppressed (first-level)
 
-    Problem: Someone can calculate 232 - 150 - 80 = 2, revealing Trust C's value!
+    Problem: Someone can calculate 232 - 150 - 80 = 2, revealing
+    Trust C's value!
 
-    Solution: Cascade suppression ALSO suppresses Trust B (Rank 2), giving:
+    Solution: Cascade suppression ALSO suppresses Trust B (Rank 2):
     - Trust A: 150 responses → Shown
     - Trust B: * → Cascade suppressed
     - Trust C: * → First-level suppressed
 
     Now calculation is impossible: 232 - 150 - ? - ? = unknown
 
-    The function flags the 2 lowest-ranked children (Rank 1 and Rank 2) of any
-    suppressed parent organization.
+    The function flags the 2 lowest-ranked children (Rank 1 and Rank 2)
+    of any suppressed parent organization.
 
     Args:
         parent_df: Parent level DataFrame with suppression flags
@@ -319,7 +325,11 @@ def apply_cascade_suppression(
     ...     'Rank': [1, 2]
     ... })
     >>> result_none = apply_cascade_suppression(
-    ...     parent_no_suppress, child_test, 'ICB_Code', 'ICB_Code', 'ICB_Suppression_Required'
+    ...     parent_no_suppress,
+    ...     child_test,
+    ...     'ICB_Code',
+    ...     'ICB_Code',
+    ...     'ICB_Suppression_Required'
     ... )
     >>> list(result_none['Cascade_Suppression'])
     [0, 0]
@@ -344,7 +354,11 @@ def apply_cascade_suppression(
     ...     'Rank': [1]
     ... })
     >>> result_one = apply_cascade_suppression(
-    ...     parent_one_rank, child_one_rank, 'ICB_Code', 'ICB_Code', 'ICB_Suppression_Required'
+    ...     parent_one_rank,
+    ...     child_one_rank,
+    ...     'ICB_Code',
+    ...     'ICB_Code',
+    ...     'ICB_Suppression_Required'
     ... )
     >>> list(result_one['Cascade_Suppression'])
     [1]
@@ -383,9 +397,10 @@ def apply_cascade_suppression(
                 ] = 1
 
             # Flag Rank 2 if exists
-            if any(parent_children["Rank"] == 2):
+            if any(parent_children["Rank"] == SECOND_RANK):
                 child_df.loc[
-                    (child_df[child_code_col] == parent_code) & (child_df["Rank"] == 2),
+                    (child_df[child_code_col] == parent_code)
+                    & (child_df["Rank"] == SECOND_RANK),
                     "Cascade_Suppression",
                 ] = 1
 
@@ -397,9 +412,9 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
 
     Applies suppression rules:
     - If ANY suppression flag is 1: Replace Likert responses with '*'
-    - If First_Level_Suppression is 1: ALSO replace percentage fields with '*'
+    - If First_Level_Suppression is 1: ALSO replace percentages with '*'
 
-    This ensures that even aggregated percentages don't reveal small counts.
+    This ensures aggregated percentages don't reveal small counts.
 
     Args:
         df: DataFrame with suppression flag columns

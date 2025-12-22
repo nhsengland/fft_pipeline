@@ -8,6 +8,8 @@ from fft.config import (
     COLUMN_MAPS,
     COLUMNS_TO_REMOVE,
     MONTH_ABBREV,
+    SUMMARY_COLUMNS,
+    TIME_SERIES_PREFIXES,
 )
 
 
@@ -30,14 +32,22 @@ def standardise_column_names(
 
     >>> import pandas as pd
     >>> from fft.processors import standardise_column_names
-    >>> raw_df = pd.DataFrame({"Parent org code": [1, 2], "Parent name": ["Org A", "Org B"]})
+    >>> raw_df = pd.DataFrame({
+    ...     "Parent org code": [1, 2], "Parent name": ["Org A", "Org B"]
+    ... })
     >>> std_df = standardise_column_names(raw_df, "inpatient", "organisation")
     >>> list(std_df.columns)
     ['ICB_Code', 'ICB_Name']
 
     # Edge case: Non-mapped column is preserved
-    >>> raw_df_extra = pd.DataFrame({"Parent org code": [1, 2], "Parent name": ["Org A", "Org B"], "Extra Column": ["X", "Y"]})
-    >>> std_df_extra = standardise_column_names(raw_df_extra, "inpatient", "organisation")
+    >>> raw_df_extra = pd.DataFrame({
+    ...     "Parent org code": [1, 2],
+    ...     "Parent name": ["Org A", "Org B"],
+    ...     "Extra Column": ["X", "Y"]
+    ... })
+    >>> std_df_extra = standardise_column_names(
+    ...     raw_df_extra, "inpatient", "organisation"
+    ... )
     >>> list(std_df_extra.columns)
     ['ICB_Code', 'ICB_Name', 'Extra Column']
 
@@ -88,7 +98,9 @@ def extract_fft_period(df: pd.DataFrame) -> str:
     'Jan-25'
 
     # Edge case: Invalid year format
-    >>> df_bad_year = pd.DataFrame({'Periodname': ['MARCH'], 'Yearnumber': ['202425']})
+    >>> df_bad_year = pd.DataFrame({
+    ...     'Periodname': ['MARCH'], 'Yearnumber': ['202425']
+    ... })
     >>> extract_fft_period(df_bad_year)
     Traceback (most recent call last):
         ...
@@ -114,8 +126,9 @@ def extract_fft_period(df: pd.DataFrame) -> str:
         raise ValueError(f"Invalid period name '{period_name}'")
 
     # Handle both formats: 'YYYY-YY' and 'YYYY_YY'
+    YEAR_FORMAT_LENGTH = 7  # Expected length for 'YYYY-YY' or 'YYYY_YY' format
     separator = None
-    if len(year_number) == 7:
+    if len(year_number) == YEAR_FORMAT_LENGTH:
         if year_number[4] == "-":
             separator = "-"
         elif year_number[4] == "_":
@@ -123,7 +136,8 @@ def extract_fft_period(df: pd.DataFrame) -> str:
 
     if separator is None:
         raise ValueError(
-            f"Invalid year format '{year_number}', expected format: 'YYYY-YY' or 'YYYY_YY'"
+            f"Invalid year format '{year_number}', "
+            f"expected format: 'YYYY-YY' or 'YYYY_YY'"
         )
 
     # Extract years
@@ -161,20 +175,30 @@ def remove_unwanted_columns(
 
     >>> import pandas as pd
     >>> from fft.processors import remove_unwanted_columns
-    >>> df = pd.DataFrame({'Yearnumber': [2024], 'Periodname': ['AUG'], 'ICB_Code': ['ABC']})
+    >>> df = pd.DataFrame({
+    ...     'Yearnumber': [2024],
+    ...     'Periodname': ['AUG'],
+    ...     'ICB_Code': ['ABC']
+    ... })
     >>> cleaned = remove_unwanted_columns(df, 'inpatient', 'organisation')
     >>> list(cleaned.columns)
     ['ICB_Code']
 
     # Edge case: No unwanted columns present (graceful handling)
-    >>> df_clean = pd.DataFrame({'ICB_Code': ['ABC'], 'Total Responses': [100]})
-    >>> result = remove_unwanted_columns(df_clean, 'inpatient', 'organisation')
+    >>> df_clean = pd.DataFrame({
+    ...     'ICB_Code': ['ABC'], 'Total Responses': [100]
+    ... })
+    >>> result = remove_unwanted_columns(
+    ...     df_clean, 'inpatient', 'organisation'
+    ... )
     >>> len(result.columns)  # Should preserve all columns
     2
 
     # Edge case: Empty DataFrame
     >>> df_empty = pd.DataFrame()
-    >>> cleaned_empty = remove_unwanted_columns(df_empty, 'inpatient', 'organisation')
+    >>> cleaned_empty = remove_unwanted_columns(
+    ...     df_empty, 'inpatient', 'organisation'
+    ... )
     >>> len(cleaned_empty.columns)
     0
 
@@ -199,7 +223,7 @@ def remove_unwanted_columns(
 
 # %% Aggregation
 def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFrame:
-    """Helper function to aggregate data by specified grouping columns.
+    """Aggregate data by specified grouping columns.
 
     This is an internal function used by aggregate_to_icb, aggregate_to_trust, etc.
 
@@ -284,7 +308,9 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     KeyError: "DataFrame missing required columns: ['ICB_Code']"
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'ICB_Name', 'Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=[
+    ...     'ICB_Code', 'ICB_Name', 'Very Good', 'Total Responses'
+    ... ])
     >>> result_empty = aggregate_to_icb(df_empty)
     >>> len(result_empty)
     0
@@ -337,7 +363,9 @@ def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
     KeyError: "DataFrame missing required columns: ['Trust_Code']"
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['Trust_Code', 'Trust_Name', 'Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=[
+    ...     'Trust_Code', 'Trust_Name', 'Very Good', 'Total Responses'
+    ... ])
     >>> result_empty = aggregate_to_trust(df_empty)
     >>> len(result_empty)
     0
@@ -390,7 +418,9 @@ def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
     KeyError: "DataFrame missing required columns: ['Site_Code']"
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['Site_Code', 'Site_Name', 'Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=[
+    ...     'Site_Code', 'Site_Name', 'Very Good', 'Total Responses'
+    ... ])
     >>> result_empty = aggregate_to_site(df_empty)
     >>> len(result_empty)
     0
@@ -423,7 +453,12 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     >>> df = pd.DataFrame({
     ...     'ICB_Code': ['ABC', 'DEF', 'IS1', 'IS1'],
     ...     'Trust_Code': ['T01', 'T02', 'T03', 'T04'],
-    ...     'Trust_Name': ['NHS Foundation Trust', 'NHS Trust', 'Independent Sector', 'Private Provider'],
+    ...     'Trust_Name': [
+    ...         'NHS Foundation Trust',
+    ...         'NHS Trust',
+    ...         'Independent Sector',
+    ...         'Private Provider'
+    ...     ],
     ...     'Very Good': [10, 5, 8, 3],
     ...     'Good': [3, 2, 4, 1],
     ...     'Neither good nor poor': [1, 0, 1, 0],
@@ -493,7 +528,9 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     2
 
     # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=['ICB_Code', 'Trust_Name', 'Very Good', 'Total Responses'])
+    >>> df_empty = pd.DataFrame(columns=[
+    ...     'ICB_Code', 'Trust_Name', 'Very Good', 'Total Responses'
+    ... ])
     >>> result_df_empty, counts_empty = aggregate_to_national(df_empty)
     >>> counts_empty['nhs_count']
     0
@@ -509,7 +546,7 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         raise KeyError("DataFrame must contain 'ICB_Code' column")
 
     # Count organisations before transformation
-    # Count how many entries contai 'NHS TRUST' or 'NHS FOUNDATION TRUST' in Trust_Name
+    # Count entries with 'NHS TRUST' or 'NHS FOUNDATION TRUST' in name
     nhs_count = (
         df["Trust_Name"]
         .apply(
@@ -585,8 +622,14 @@ def merge_collection_modes(
         Merged DataFrame with mode columns added
 
     >>> import pandas as pd
-    >>> org = pd.DataFrame({'Trust_Code': ['T01', 'T02'], 'Total Responses': [100, 200]})
-    >>> coll = pd.DataFrame({'Trust_Code': ['T01', 'T02'], 'Mode SMS': [50, 100], 'Mode Online': [50, 100]})
+    >>> org = pd.DataFrame({
+    ...     'Trust_Code': ['T01', 'T02'], 'Total Responses': [100, 200]
+    ... })
+    >>> coll = pd.DataFrame({
+    ...     'Trust_Code': ['T01', 'T02'],
+    ...     'Mode SMS': [50, 100],
+    ...     'Mode Online': [50, 100]
+    ... })
     >>> merged = merge_collection_modes(org, coll)
     >>> 'Mode SMS' in merged.columns
     True
@@ -613,12 +656,15 @@ def clean_icb_name(name: str) -> str:
     """Clean ICB name to match standard format.
 
     Args:
-        name: Raw ICB name (e.g., "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD")
+        name: Raw ICB name (e.g.,
+            "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD")
 
     Returns:
         Cleaned name (e.g., "LANCASHIRE AND SOUTH CUMBRIA ICB")
 
-    >>> clean_icb_name("NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD")
+    >>> clean_icb_name(
+    ...     "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD"
+    ... )
     'LANCASHIRE AND SOUTH CUMBRIA ICB'
     >>> clean_icb_name("NHS SUSSEX INTEGRATED CARE BOARD")
     'SUSSEX ICB'
@@ -639,7 +685,7 @@ def clean_icb_name(name: str) -> str:
 
 # %%
 def convert_fft_period_to_datetime(fft_period: str):
-    """Convert FFT period string to datetime object for Collections Overview lookup.
+    """Convert FFT period to datetime for Collections Overview lookup.
 
     Args:
         fft_period: FFT period string (e.g., 'Jul-25')
@@ -648,15 +694,23 @@ def convert_fft_period_to_datetime(fft_period: str):
         pandas Timestamp object (e.g., Timestamp('2025-07-01'))
 
     """
-    import pandas as pd
-
-    month_abbrev, year = fft_period.split('-')
+    month_abbrev, year = fft_period.split("-")
     year_full = 2000 + int(year)  # Convert 25 -> 2025
 
     # Convert month abbreviation to number
     month_map = {
-        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+        "Jan": 1,
+        "Feb": 2,
+        "Mar": 3,
+        "Apr": 4,
+        "May": 5,
+        "Jun": 6,
+        "Jul": 7,
+        "Aug": 8,
+        "Sep": 9,
+        "Oct": 10,
+        "Nov": 11,
+        "Dec": 12,
     }
 
     month_num = month_map[month_abbrev]
@@ -732,8 +786,6 @@ def extract_summary_data(
     ValueError: Period 'Jan-20' not found in time series data
 
     """
-    from fft.config import SUMMARY_COLUMNS, TIME_SERIES_PREFIXES
-
     if service_type not in TIME_SERIES_PREFIXES:
         raise KeyError(f"Unknown service type: '{service_type}'")
 
@@ -750,8 +802,12 @@ def extract_summary_data(
         raise ValueError(f"Period '{previous_period}' not found in time series data")
 
     current_row = time_series_df[time_series_df["Collection"] == current_datetime].iloc[0]
-    previous_row = time_series_df[time_series_df["Collection"] == previous_datetime].iloc[0]
-    current_idx = time_series_df[time_series_df["Collection"] == current_datetime].index[0]
+    previous_row = time_series_df[time_series_df["Collection"] == previous_datetime].iloc[
+        0
+    ]
+    current_idx = time_series_df[time_series_df["Collection"] == current_datetime].index[
+        0
+    ]
 
     def get_col(suffix):
         """Build column name from prefix and suffix."""
