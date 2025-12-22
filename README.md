@@ -1,121 +1,264 @@
-# Friends and Family Test Response Processing ETL Pipeline Documentation
+# FFT Pipeline
 
-[![status: experimental](https://github.com/GIScience/badges/raw/master/status/experimental.svg)](https://github.com/GIScience/badges#experimental)
+**Automated processing of NHS Friends and Family Test (FFT) data into publishable reports via CLI or web interface.**
 
-This ELT pipeline currently takes the output from the monthly Inpatient Friends and Family Test (FFT) raw data submissions (stored in a restricted access
-SharePoint folder to ensure Data governance compliance before processing), and following transformation/processing, Loads it into a Macro-enabled Excel
-template for publication at [https://www.england.nhs.uk/fft/friends-and-family-test-data/](https://www.england.nhs.uk/fft/friends-and-family-test-data/) ensuring compliance with NHS England’s mandate to publish monthly FFT figures.
-The following outlines the full ETL process, technology stack employed, and action required to ensure successful running.
+## What This Does
 
-The ambition is for the pipeline to be expanded to run across all FFT collections.
+The Friends and Family Test (FFT) is the UK's largest patient feedback programme, collecting ~2 million responses monthly. This pipeline transforms raw monthly FFT Excel data into formatted, suppression-compliant reports published by NHS England. Reports are published with a monthly cadence at the NHS England [Friends and Family Test data](https://www.england.nhs.uk/fft/friends-and-family-test-data/) page.
 
-_**Note:** No sensitive data is shared in this repository._
+**Available interfaces:**
+- **Command line interface** for automated/scripted processing
+- **Web interface** for interactive use via browser
 
+Supports multiple service types:
+- **Inpatient services** (Ward → Site → Trust → ICB)
+- **A&E services** (Site → Trust → ICB) _coming soon_
+- **Ambulance services** (Trust → ICB) _coming soon_
 
-### ETL Process Overview
-The pipeline is designed to fit future NHS England architecture under a Common Data Platform, with a view to being lifted into the Unified Data Access Layer (UDAL) once all raw data files are made available in a private data environment, where Databricks will be used to fully automate production.  Until then, the pipeline:
--	validates specified column lengths and column types (for `int`/`float` type)
--	generates period strings for current and previous period for use in referencing/labelling
--	removes unnecessary columns and renames remaining columns to conform with stakeholder requirements and to map to expected output
--	with Trust/Organisation level data extracted to a DataFrame, aggregates all Independent Providers (IS1) and NHS providers (NHS) respectively, and aggregates is1/NHS lines together, producing national totals, IS1 totals and NHS totals for the period
--	creates percentage positive/negative fields for the totals and adds counts of IS1 and NHS providers to respective rows in the DataFrame
--	extracts Monthly Rolling Totals.xlsx inpatient sheet to a DataFrame and updates it with generated current monthly totals for national, IS1 and NHS.
--	adds cumulative totals into the monthly rolling totals DataFrame using previous months cumulative values and current months totals
--	extracts previous months values from Rolling Monthly Total.xlsx to produce a national summary DataFrame of current/previous month figures
--	loads updated monthly rolling totals DataFrame back into Rolling Monthly Total.xlsx
--	creates an ICB level DataFrame from a copy of the Trust/Organisation level DataFrame by dropping required fields and aggregating all values by ICB Code/Name
--	creates and implements first level and second level suppression processes to ICB level DataFrame and sorts the DataFrame by ICB Code (descending order) moving all IS1 data to the bottom
--	orders and ranks the Organisation/Trust level DataFrame and using the ICB level DataFrame for suppression reference of upper-level suppressions, implement first, second and upper-level suppression to Organisations/Trusts within ICBs, then sort the DataFrame by ICB Code (ascending) and Total Responses (descending) and move all IS1 data to the bottom
--	extracts Trust Collection Modes data to a new DataFrame and join these by Site Code to the Organisation/Trust level DataFrame.
--	uses a copy of the Collection Mode DataFrame to generate aggregated sum totals including/excluding IS1s
--	extracts site level raw data to a DataFrame and repeat all stages carried out at Trust/Organisation level for suppression, excluding adding collection mode detail. Following site level suppression sort the DataFrame by ICB Code (ascending), Trust Code (ascending) and Total Responses (descending) and move all independent provider rows to the bottom
--	extracts ward level raw data to a DataFrame and repeat all stages carried out at site level for suppression. Following ward level suppression sort the DataFrame by ICB Code (ascending), Trust Code (ascending) Site Code (ascending) and Total Responses (descending) and move all independent provider rows to the bottom
--	removes special characters from ward names to prevent error generation
--	generates Macro Excel back sheet Dropdown lists to ensure all tab filters in the Macro-enabled Excel file contain correct ICB/Trust/Site/Ward name details
--	opens the Macro-Enabled Excel template to workbook object and all loads in all DataFrames to the correct workbook sheets using a list of tuples stating which DataFrame to paste in which sheet starting in which row and column
--	updates period subheadings on the Summary sheet with correct current/previous period labels and formatting
--	creates a Percentage style within the Workbook and converts all percentage columns to correct format with 0 decimal places
--	updates Period in the ‘Note’ sheet title to the current period  and saves the updated workbook
+## Key Features
 
+### Privacy-First Suppression
+Implements cascading suppression rules to prevent patient identification:
+- Any organisation with 1-4 responses gets suppressed (replaced with `*`)
+- Second-level suppression prevents reverse calculation
+- Cascade suppression flows from parent to child levels (ICB → Trust → Site → Ward)
 
-### Data source/Linage
-NHS/Independent Providers submit monthly FFT returns using NHS England’s Strategic Data Collection Service (SDCS). It is then made available to FFT analysts for download via NHS England’s Secure Electronic File transfer (SEFT) system. Data is downloaded into a restricted access SharePoint folder as an Excel (.xlsx) file. Data is extracted directly from this folder for transformation/processing using Python in VS Code.
+### Multi-Level Aggregation
+Processes data at multiple geographic levels:
+- Aggregates responses by Likert scale (Very Good → Very Poor)
+- Calculates percentage positive/negative at each level
+- Maintains organisational hierarchy throughout
 
+### Rolling Totals
+Maintains historical cumulative statistics in CSV format:
+- Monthly submission counts (NHS vs Independent providers)
+- Cumulative response totals
+- Monthly percentage positive/negative trends
 
-### Scheduling and Automated Run Process
-In its current format the Pipeline can be manually triggered once new data is loaded to the restricted SharePoint folder. All data is loaded by 22nd(?) of every month. To avoid manually running the process the pipeline can be triggered using Windows Task Scheduler. Given Windows Task Scheduler cannot be triggered by the raw data file being loaded to the SharePoint folder, the run process will need to be set to run on the 22nd(?) of each month. Alternatively automation could be run through Airflow. Once all raw data files are made available in a private data environment on UDAL or FDP, the process can be automated via Databricks or FDP.
-It is possible to
+### Template-Based Output
+Generates macro-enabled Excel reports matching NHS England publication standards:
+- Pre-formatted sheets for Summary, ICB, Trust, Site, Ward levels
+- Dynamic filtering via backend dropdown lists
+- Consistent formatting across all service types
 
+### Web Interface
+Simple browser-based interface for interactive pipeline operations:
+- Service type selection with dynamic file discovery
+- Month filtering with "All months" option
+- Real-time status updates and log output
+- One-click output folder access
+- Accessible design with dark mode support
 
-### Technology Stack
-The pipeline was built in python using the following tools/libraries:
--	pandas – for data manipulation/transformation
--	glob – to find matching file name patterns
--	openpyxl – to enable interaction (open/ manipulate/save) macro-enabled Excel files while retaining VBA code
--	pytest - for development and testing of unit tests run to ensure code performs as expected
--	unittest.mock and monkeypatch - enabling mocked filepath/files for running unit tests checking accessing raw data files and saving files
--	pytest-cov - to allow for selecting which folder/file is tests
--	doctest - for embedded tests in function docstrings that serve as both documentation and tests
--	logging – to generate log reports each time the pipeline runs to check pipeline health, all pipeline processes that complete
-    successfully or where in the pipeline an error causes failure
-
-
-### Testing
-
-The codebase includes two types of tests:
-
-#### Doctests
-
-Most core ETL functions include comprehensive doctests that serve as both documentation and tests. These examples show how to use each function and verify their behavior with both normal inputs and edge cases.
-
-Run the doctests with:
+## Quick Start
 
 ```bash
-uv run python -m doctest src/etl_functions.py -v
+# Create virtual environment and install dependencies
+uv venv
+uv sync
 ```
 
-#### Unit Tests
-
-For functions that require complex fixtures or mocking, traditional pytest unit tests are available:
+### Option 1: Web Interface
 
 ```bash
-uv run pytest
+# Start web interface (opens automatically in browser)
+uv run python src/fft/app/server.py
 ```
 
-or with coverage:
+### Option 2: Command Line
 
 ```bash
-uv run pytest --cov=src --cov-report=term-missing
+# Run for inpatient data (default: latest 2 months)
+uv run python -m fft --ip
+
+# Run for A&E data
+uv run python -m fft --ae
+
+# Run for ambulance data
+uv run python -m fft --amb
 ```
 
-### Troubleshooting
-If any errors arise from running the pipeline, access the logfiles folder and review messages – (logfiles\inpatient_fft).
-The folder contains datetime suffixed logfiles with the most recent run datetime at the bottom.
-Working through the most recent logfile in each subfolder, it will be easy to track at which stage and what type of error caused the pipeline failure highlighting what needs to be checked and fixed. Where an unplanned anomaly creates the fault, tests and function updates should be added to the code to ensure this doesn't generate the same issue in the future. A full run of all tests (doctests and pytest) must be run to ensure new code doesn't have a negative impact on existing code/modules. All changes must be completed on a new branch and pull request submitted detailing changes to ensure version control and change log history.
+## Installation Requirements
 
+This project uses `uv` for dependency management. Your `pyproject.toml` contains all required packages. Simply:
 
-### Contributing
+```bash
+uv venv
+uv sync
+```
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+## Project Structure
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+```
+fft_pipeline/
+├── src/
+│   └── fft/
+│       ├── app/            # FastHTML web interface
+│       │   ├── __init__.py
+│       │   ├── __main__.py
+│       │   └── server.py   # Main web application
+│       ├── config.py       # Centralised configuration (paths, mappings, constants)
+│       ├── loaders.py      # Data loading from Excel files
+│       ├── processors.py   # Transformation pipeline (rename, aggregate, calculate)
+│       ├── suppression.py  # Privacy suppression logic (first/second/cascade)
+│       ├── writers.py      # Excel output generation
+│       └── utils.py        # Helper functions (validation, etc.)
+├── data/
+│   ├── inputs/
+│   │   ├── raw/               # Monthly raw Excel files (FFT_IP_V1 Aug-25.xlsx)
+│   │   ├── rolling_totals/    # Historical CSV files (rolling_totals_inpatient.csv)
+│   │   └── templates/         # Excel templates (FFT-inpatient-data-template.xlsm)
+│   └── outputs/               # Generated reports (FFT-inpatient-data-Aug-25.xlsm)
+```
 
-_See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for detailed guidance._
+## Data Flow
 
+```mermaid
+graph LR
+    A[Raw Excel Files] --> B[loaders.py]
+    B --> C[processors.py]
+    C --> D[suppression.py]
+    D --> E[writers.py]
+    E --> F[Output .xlsm]
+    
+    G[config.py] --> B
+    G --> C
+    G --> D
+    G --> E
+    
+    H[Template .xlsm] --> E
+```
 
-### License
+## How Suppression Works
 
-Unless stated otherwise, the codebase is released under [the MIT Licence][mit].
-This covers both the codebase and any sample code in the documentation.
+**The Problem**: Small response counts (< 5) could identify individual patients.
 
-_See [LICENSE](./LICENSE) for more information._
+**The Solution**: Three-level suppression cascade
 
-The documentation is [© Crown copyright][copyright] and available under the terms of the [Open Government 3.0][ogl] licence.
+1. **First-level**: Any row with 1-4 responses gets all Likert responses replaced with `*`
+2. **Second-level**: The next-lowest responding organisation also gets suppressed (prevents "Total - Known = Suppressed" calculation)
+3. **Cascade**: If a parent level (e.g., ICB) requires suppression, the two lowest-responding children (e.g., Trusts) also get suppressed
 
-[mit]: ./LICENCE
-[copyright]: http://www.nationalarchives.gov.uk/information-management/re-using-public-sector-information/uk-government-licensing-framework/crown-copyright/
-[ogl]: http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/
+**Example**:
+```
+ICB North (232 responses - suppressed due to having a Trust with 2 responses)
+├─ Trust A: 150 responses → Shown
+├─ Trust B: 80 responses → * (cascade suppression - Rank 2)
+└─ Trust C: 2 responses → * (first-level suppression - Rank 1)
+```
+
+Without cascade suppression, someone could calculate: `232 - 150 = 82`, revealing Trust C's data.
+
+### Geographic Level Processing Pattern 
+
+```mermaid 
+graph TD
+    A[Raw Excel Data] --> B[Ward Level]
+    B --> C[Site Level]
+    C --> D[Trust/Organisation Level]
+    D --> E[ICB Level]
+    E --> F[National Level]
+    
+    B --> B1[Steps:<br/>1. Standardise columns<br/>2. Mark IS1 providers<br/>3. Remove unwanted columns]
+    
+    C --> C1[Same steps as Ward]
+    
+    D --> D1[Same steps +<br/>Merge collection modes]
+    
+    E --> E1[Aggregate from Trust level<br/>Group by ICB Code/Name<br/>Sum responses<br/>Recalculate percentages]
+    
+    F --> F1[Aggregate from Trust level<br/>Group by Submitter Type<br/>Total + NHS + IS1 rows]
+```
+
+### Suppression Cascade Logic
+
+```mermaid
+graph TD
+    A[ICB Level] -->|Apply suppression| B[Flag ICBs with 1-4 responses]
+    B --> C[Second-level: Flag next lowest ICB]
+    
+    D[Trust Level] -->|Cascade from ICB| E[If parent ICB suppressed<br/>Suppress Rank 1 & 2 Trusts]
+    E --> F[Also apply first/second level<br/>for Trusts own data]
+    
+    G[Site Level] -->|Cascade from Trust| H[If parent Trust suppressed<br/>Suppress Rank 1 & 2 Sites]
+    H --> I[Also apply first/second level<br/>for Sites own data]
+    
+    J[Ward Level] -->|Cascade from Site| K[If parent Site suppressed<br/>Suppress Rank 1 & 2 Wards]
+    K --> L[Also apply first/second level<br/>for Wards own data]
+    
+    style B fill:#E74C3C,color:#fff
+    style C fill:#E74C3C,color:#fff
+    style E fill:#F39C12,color:#000
+    style H fill:#F39C12,color:#000
+    style K fill:#F39C12,color:#000
+```
+
+## Example File Locations
+
+```
+data/inputs/raw/
+├── FFT_IP_V1 Aug-25.xlsx       # Current month inpatient
+├── FFT_IP_V1 Jul-25.xlsx       # Previous month inpatient
+└── FFT_AE_V1 Aug-25.xlsx       # Current month A&E
+
+data/inputs/rolling_totals/
+├── rolling_totals_inpatient.csv
+└── rolling_totals_ambulance.csv
+
+data/inputs/templates/
+├── FFT_IP_template.xlsm
+├── FFT_AE_template.xlsm
+└── FFT_Amb_template.xlsm
+
+data/outputs/
+├── FFT-inpatient-data-Aug-25.xlsm
+└── FFT-ambulance-data-Aug-25.xlsm
+```
+
+## Testing
+
+Functions use doctests for inline testing:
+
+```bash
+# Run doctests quietly (only shows failures)
+uv run python -m doctest $(find src/fft/ -name "*.py" -not -name "__main__.py")
+```
+
+## Utilities
+
+### BS Sheet Population
+
+The pipeline includes a utility to populate template 'BS' sheets with content from suppression files:
+
+```bash
+# Populate all template BS sheets from corresponding suppression files
+uv run python src/fft/utils.py
+```
+
+**What it does:**
+- Automatically discovers templates and matches them with suppression files
+- Validates that both files contain 'BS' sheets before copying
+- Handles flexible naming conventions:
+  - `FFT_IP_template.xlsm` ← `IP_Suppression_V3.5.xlsm`
+  - `FFT_Amb_template.xlsm` ← `Aug25_Amb_Suppression.xlsm`
+  - `FFT_AE_template.xlsm` ← `AE_Suppression_V3.5.xlsm`
+
+**Safe to run multiple times** - the script is idempotent and will overwrite BS sheet content to match suppression files without creating duplicates or corruption.
+
+**Example output:**
+```
+4 templates successfully updated with suppression data:
+- OP: 5,904 cells copied
+- Amb: 504 cells copied
+- IP: 288,272 cells copied
+- AE: 7,854 cells copied
+```
+
+## Development Status
+
+**Current**: Inpatient pipeline (Ward → Site → Trust → ICB)  
+**Next**: A&E pipeline (Site → Trust → ICB)  
+**Future**: Ambulance pipeline (Trust → ICB)
+
+---
+
+*This pipeline processes official NHS England data. Handle with care and ensure GDPR compliance.*

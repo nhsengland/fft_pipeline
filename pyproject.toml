@@ -6,19 +6,17 @@ build-backend = "setuptools.build_meta"
 name = "fft_pipeline"
 version = "0.1.0"
 description = "FFT Response Processing ETL Pipeline"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "pandas",                 # For data manipulation
-    "openpyxl",               # For Excel file handling
-    "pytest",                 # For testing
-    "pytest-cov",             # For test coverage reporting
-    "hypothesis>=6.147.0",    # For property-based testing
+    "pandas>=2.3.3",                # Powerful data structures for data analysis, time series, and statistics 
+    "openpyxl>=3.1.5",              # A Python library to read/write Excel 2010 xlsx/xlsm files
+    "python-fasthtml>=0.12.36",     # The fastest way to create an HTML app
 ]
 
 [project.optional-dependencies]
 dev = [
-    "ruff",                   # Linter / Formatter
-    "ty",                     # Type checker
+    "ruff>=0.14.8",                 # Linter / Formatter
+    "ty>=0.0.1a32",                 # Type checker
 ]
 
 # Ruff configuration
@@ -28,23 +26,16 @@ target-version = "py313"
 exclude = [""]
 
 [tool.ruff.lint]
-# Simple rules: pylint + isort
-select = [
-    "E",                      # pycodestyle errors
-    "W",                      # pycodestyle warnings
-    "I",                      # isort (import sorting)
-    "PL",                     # pylint rules
-]
+# Enable rule sets:
+# E = pycodestyle errors
+# W = pycodestyle warnings  
+# F = pyflakes (undefined names, unused imports, etc.)
+# I = isort (import sorting)
+# D = pydocstyle (docstring conventions)
+# UP = pyupgrade (modernise syntax)
+# PL = pylint rules
+select = ["E", "W", "F", "I", "D", "UP", "PL"]
 exclude = [""]
-
-[tool.ty.src]
-exclude = ["tests"]
-
-[tool.ty.rules]
-invalid-argument-type = "warn"
-invalid-key = "warn"
-unresolved-reference = "warn"
-invalid-assignment = "warn"
 
 [tool.ruff.lint.isort]
 # isort configuration
@@ -54,7 +45,14 @@ combine-as-imports = true
 [tool.ruff.format]
 # Black-compatible formatting (default settings)
 quote-style = "double"
+indent-style = "space"
 exclude = ["*.ipynb"]
 
-[tool.pytest.ini_options]
-addopts = "--cov=src --cov-report=term-missing -vv"
+[tool.ty.src]
+exclude = ["tests"]
+
+[tool.ty.rules]
+invalid-argument-type = "warn"
+invalid-key = "warn"
+unresolved-reference = "warn"
+invalid-assignment = "warn"
