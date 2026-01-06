@@ -188,7 +188,7 @@ def write_bs_lookup_data(
     'RY6'
     >>> wb['BS'].cell(row=1, column=32).value  # AF1 = Template header (unchanged)
     'Name…'
-    >>> wb['BS'].cell(row=2, column=32).value  # AF2 = First Trust Name (sorted independently)
+    >>> wb['BS'].cell(row=2, column=32).value  # AF2 = First Trust Name (sorted)
     'Trust Alpha'
 
     # Edge case: Missing BS sheet
