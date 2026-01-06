@@ -64,6 +64,7 @@ def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
         raise KeyError("'Total Responses' column not found in DataFrame")
 
     # Create suppression flag: 1 if 0 < responses < threshold, else 0
+    # See suppression file Ward/Site/Trust Calcs sheets, row 2 column '0><5 responses'
     df = df.copy()
     df["First_Level_Suppression"] = df["Total Responses"].apply(
         lambda x: 1 if 0 < x < SUPPRESSION_THRESHOLD else 0
@@ -73,58 +74,85 @@ def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # %%
-def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.DataFrame:
-    """Add ranking column based on Total Responses within groups.
+def add_vba_aligned_rank_column(df: pd.DataFrame, group_col: str) -> pd.DataFrame:
+    """Add VBA-aligned ranking column based on row order and group transitions.
 
-    Ranks organizations by Total Responses (lowest to highest) within each group.
-    Rows with 0 responses get rank 0. Lowest non-zero response gets rank 1.
+    Implements VBA formula: =IF(E2=0,0,IF(A2=A1,H1+1,1))
+    - If Total Responses = 0: rank = 0
+    - If same group as previous row: rank = previous rank + 1
+    - If different group: rank = 1
+
+    This is row-order dependent and matches VBA's exact algorithm.
 
     Args:
-        df: DataFrame with 'Total Responses' column
-        group_by_col: Column to group by for ranking (e.g., 'ICB_Code' for Trust level).
-                      If None, ranks across entire DataFrame (for ICB level).
+        df: DataFrame with 'Total Responses' column (must be pre-sorted!)
+        group_col: Column to check for group transitions (e.g., 'Site_Code')
 
     Returns:
         DataFrame with added 'Rank' column
 
-    Raises:
-        KeyError: If 'Total Responses' or group_by_col is missing
-
     >>> import pandas as pd
-    >>> from src.fft.suppression import add_rank_column
+    >>> from src.fft.suppression import add_vba_aligned_rank_column
     >>> df = pd.DataFrame({
-    ...     'ICB_Code': ['A', 'A', 'A', 'B', 'B'],
-    ...     'Trust_Code': ['T1', 'T2', 'T3', 'T4', 'T5'],
-    ...     'Total Responses': [0, 3, 10, 5, 8]
+    ...     'Site_Code': ['S1', 'S1', 'S1', 'S2', 'S2'],
+    ...     'Total Responses': [0, 5, 10, 3, 8]
     ... })
-    >>> result = add_rank_column(df, 'ICB_Code')
+    >>> result = add_vba_aligned_rank_column(df, 'Site_Code')
     >>> list(result['Rank'])
     [0, 1, 2, 1, 2]
 
-    # Edge case: No grouping (ICB level)
-    >>> df_no_group = pd.DataFrame({
-    ...     'ICB_Code': ['A', 'B', 'C'],
-    ...     'Total Responses': [0, 5, 10]
-    ... })
-    >>> result_no_group = add_rank_column(df_no_group, None)
-    >>> list(result_no_group['Rank'])
-    [0, 1, 2]
-
-    # Edge case: Missing column
-    >>> df_missing = pd.DataFrame({'ICB_Code': ['A']})
-    >>> add_rank_column(df_missing, None)
-    Traceback (most recent call last):
-        ...
-    KeyError: "'Total Responses' column not found in DataFrame"
-
     # Edge case: All zeros
     >>> df_zeros = pd.DataFrame({
-    ...     'ICB_Code': ['A', 'A'],
+    ...     'Site_Code': ['S1', 'S1'],
     ...     'Total Responses': [0, 0]
     ... })
-    >>> result_zeros = add_rank_column(df_zeros, 'ICB_Code')
+    >>> result_zeros = add_vba_aligned_rank_column(df_zeros, 'Site_Code')
     >>> list(result_zeros['Rank'])
     [0, 0]
+    """
+    if "Total Responses" not in df.columns:
+        raise KeyError("'Total Responses' column not found in DataFrame")
+    if group_col not in df.columns:
+        raise KeyError(f"'{group_col}' column not found in DataFrame")
+
+    df = df.copy()
+    df["Rank"] = 0
+
+    # VBA formula: =IF(E2=0,0,IF(A2=A1,H1+1,1))
+    prev_group = None
+    prev_rank = 0
+
+    for idx in df.index:
+        responses = df.loc[idx, 'Total Responses']
+        current_group = df.loc[idx, group_col]
+
+        if responses == 0:
+            df.loc[idx, 'Rank'] = 0
+        elif current_group == prev_group:
+            # Same group as previous row: increment rank
+            df.loc[idx, 'Rank'] = prev_rank + 1
+        else:
+            # Different group: reset to rank 1
+            df.loc[idx, 'Rank'] = 1
+
+        prev_group = current_group
+        prev_rank = df.loc[idx, 'Rank']
+
+    return df
+
+
+def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.DataFrame:
+    """Add ranking column based on Total Responses within groups.
+
+    For ward data, uses VBA tie-breaking: Ward_Name → First Speciality → Second Speciality.
+    For other levels, ranks by Total Responses only.
+
+    Args:
+        df: DataFrame with 'Total Responses' column
+        group_by_col: Column to group by for ranking (e.g., 'Site_Code' for Ward level).
+
+    Returns:
+        DataFrame with added 'Rank' column
 
     """
     if "Total Responses" not in df.columns:
@@ -136,22 +164,53 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
     df = df.copy()
     df["Rank"] = 0
 
-    # Create mask for non-zero responses
-    non_zero_mask = df["Total Responses"] > 0
+    # Check if this is ward data (has specialty columns)
+    is_ward_data = "Ward_Name" in df.columns and "First Speciality" in df.columns
 
     if group_by_col:
-        # Rank within groups
-        df.loc[non_zero_mask, "Rank"] = (
-            df[non_zero_mask]
-            .groupby(group_by_col)["Total Responses"]
-            .rank(method="dense")
-            .astype(int)
-        )
+        for group_name, group_indices in df.groupby(group_by_col).groups.items():
+            group_data = df.loc[group_indices]
+            non_zero_data = group_data[group_data["Total Responses"] > 0]
+
+            if non_zero_data.empty:
+                continue
+
+            if is_ward_data:
+                # VBA tie-breaking using numeric specialty codes (not text)
+                df_temp = non_zero_data.copy()
+
+                # Extract numeric codes from specialty text
+                if "First Speciality" in df_temp.columns:
+                    df_temp["_spec1_code"] = df_temp["First Speciality"].apply(
+                        lambda x: int(str(x).split(" - ")[0]) if " - " in str(x) else 999
+                    )
+                else:
+                    df_temp["_spec1_code"] = 999
+
+                if "Second Speciality" in df_temp.columns:
+                    df_temp["_spec2_code"] = df_temp["Second Speciality"].apply(
+                        lambda x: int(str(x).split(" - ")[0]) if " - " in str(x) and str(x) != "0" else 0
+                    )
+                else:
+                    df_temp["_spec2_code"] = 0
+
+                # Sort by: Total Responses → Ward_Name → Spec1_Code → Spec2_Code
+                sorted_indices = df_temp.sort_values(
+                    ["Total Responses", "Ward_Name", "_spec1_code", "_spec2_code"]
+                ).index
+            else:
+                # Standard response-based ranking
+                sorted_indices = non_zero_data.sort_values("Total Responses").index
+
+            for i, idx in enumerate(sorted_indices, 1):
+                df.loc[idx, "Rank"] = i
     else:
-        # Rank across entire DataFrame
-        df.loc[non_zero_mask, "Rank"] = (
-            df.loc[non_zero_mask, "Total Responses"].rank(method="dense").astype(int)
-        )
+        # ICB level - no grouping
+        non_zero_data = df[df["Total Responses"] > 0]
+        if not non_zero_data.empty:
+            sorted_indices = non_zero_data.sort_values("Total Responses").index
+            for i, idx in enumerate(sorted_indices, 1):
+                df.loc[idx, "Rank"] = i
 
     return df
 
@@ -224,23 +283,37 @@ def apply_second_level_suppression(
     df = df.copy()
     df["Second_Level_Suppression"] = 0
 
-    # Iterate through rows starting from index 1
-    for i in range(1, len(df)):
-        prev_idx = i - 1
+    # Suppression workbook logic: =IF(AND(I1=1, H2=2, I2<>1),1,"")
+    # Rank-based evaluation (order-independent)
 
-        # Check if previous row has Rank 1 and first-level suppression
-        if (
-            df.iloc[prev_idx]["Rank"] == 1
-            and df.iloc[prev_idx]["First_Level_Suppression"] == 1
-        ):
-            # Check if current row is Rank 2
-            if df.iloc[i]["Rank"] == SECOND_RANK:
-                # Check if same group (if grouping applies)
-                if (
-                    group_by_col is None
-                    or df.iloc[i][group_by_col] == df.iloc[prev_idx][group_by_col]
-                ):
-                    df.at[df.index[i], "Second_Level_Suppression"] = 1
+    if group_by_col:
+        # Within each group, check rank relationships
+        for group_name, group_data in df.groupby(group_by_col):
+            # Check if Rank 1 in this group is first-level suppressed
+            rank_1_rows = group_data[group_data["Rank"] == 1]
+            rank_1_suppressed = (rank_1_rows["First_Level_Suppression"] == 1).any()
+
+            if rank_1_suppressed:
+                # Find Rank 2 rows that are NOT first-level suppressed
+                rank_2_mask = (
+                    (df[group_by_col] == group_name)
+                    & (df["Rank"] == SECOND_RANK)
+                    & (df["First_Level_Suppression"] != 1)
+                )
+                df.loc[rank_2_mask, "Second_Level_Suppression"] = 1
+    else:
+        # No grouping - check rank relationships across entire DataFrame
+        # Check if any Rank 1 is first-level suppressed
+        rank_1_suppressed = (
+            (df["Rank"] == 1) & (df["First_Level_Suppression"] == 1)
+        ).any()
+
+        if rank_1_suppressed:
+            # Find Rank 2 rows that are NOT first-level suppressed
+            rank_2_mask = (
+                (df["Rank"] == SECOND_RANK) & (df["First_Level_Suppression"] != 1)
+            )
+            df.loc[rank_2_mask, "Second_Level_Suppression"] = 1
 
     return df
 
@@ -259,7 +332,7 @@ def apply_cascade_suppression(
     - First/Second level suppression: Based on child's OWN response count
     - Cascade suppression: Based on PARENT's suppression status
 
-    When a parent organization is already suppressed (at its own level),
+    When a parent organisation is already suppressed (at its own level),
     we must also suppress its children to prevent reverse calculation
     using parent totals.
 
@@ -282,7 +355,7 @@ def apply_cascade_suppression(
     Now calculation is impossible: 232 - 150 - ? - ? = unknown
 
     The function flags the 2 lowest-ranked children (Rank 1 and Rank 2)
-    of any suppressed parent organization.
+    of any suppressed parent organisation.
 
     Args:
         parent_df: Parent level DataFrame with suppression flags
@@ -407,12 +480,14 @@ def apply_cascade_suppression(
     return child_df
 
 
+
 def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
     """Replace sensitive values with '*' based on suppression flags.
 
     Applies suppression rules:
     - If ANY suppression flag is 1: Replace Likert responses with '*'
     - If First_Level_Suppression is 1: ALSO replace percentages with '*'
+    - Additionally applies individual breakdown column suppression (VBA-aligned)
 
     This ensures aggregated percentages don't reveal small counts.
 
@@ -431,10 +506,10 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
     ...     'ICB_Code': ['A', 'B', 'C'],
     ...     'Very Good': [10, 3, 50],
     ...     'Good': [5, 1, 20],
-    ...     'Neither good nor poor': [2, 0, 10],
+    ...     'Neither Good nor Poor': [2, 0, 10],
     ...     'Poor': [1, 1, 5],
-    ...     'Very poor': [0, 0, 2],
-    ...     'Dont Know': [1, 0, 3],
+    ...     'Very Poor': [0, 0, 2],
+    ...     "Don't Know": [1, 0, 3],
     ...     'Percentage_Positive': [0.79, 0.80, 0.78],
     ...     'Percentage_Negative': [0.05, 0.20, 0.08],
     ...     'First_Level_Suppression': [0, 1, 0],

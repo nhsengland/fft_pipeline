@@ -25,7 +25,7 @@ def standardise_column_names(
         level: 'organisation', 'site', or 'ward'
 
     Returns:
-        DataFrame with standardized column names
+        DataFrame with standardised column names
 
     Raises:
         KeyError: If service_type or level is invalid
@@ -66,7 +66,34 @@ def standardise_column_names(
 
     column_map = COLUMN_MAPS[service_type][level]
 
-    return df.rename(columns=column_map)
+    df_renamed = df.rename(columns=column_map)
+
+    # Calculate Percentage_Negative from counts if not present but counts are available
+    required_cols = ["Poor", "Very Poor", "Total Responses"]
+    if ("Percentage_Negative" not in df_renamed.columns and
+        all(col in df_renamed.columns for col in required_cols)):
+        df_renamed["Percentage_Negative"] = (
+            (df_renamed["Poor"] + df_renamed["Very Poor"]) /
+            df_renamed["Total Responses"]
+        )
+
+    # Standardise missing specialty values to '-'
+    for col in ["First Speciality", "Second Speciality"]:
+        if col in df_renamed.columns:
+            df_renamed[col] = df_renamed[col].fillna("-").replace(["0", 0, ""], "-")
+
+    # Recalculate percentages from Likert responses (fixes incorrect raw Prop_Pos values)
+    if all(col in df_renamed.columns for col in ["Very Good", "Good", "Total Responses"]):
+        df_renamed["Percentage_Positive"] = (
+            (df_renamed["Very Good"] + df_renamed["Good"]) / df_renamed["Total Responses"]
+        ).fillna(0)
+
+    if all(col in df_renamed.columns for col in ["Poor", "Very Poor", "Total Responses"]):
+        df_renamed["Percentage_Negative"] = (
+            (df_renamed["Poor"] + df_renamed["Very Poor"]) / df_renamed["Total Responses"]
+        ).fillna(0)
+
+    return df_renamed
 
 
 # %%
@@ -256,12 +283,12 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
         agg_df["Percentage_Positive"] = (
             (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        ).round(4)
+        )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
         agg_df["Percentage_Negative"] = (
             (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        ).round(4)
+        )
 
     return agg_df
 
@@ -598,12 +625,12 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
         agg_df["Percentage_Positive"] = (
             (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        ).round(4)
+        )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
         agg_df["Percentage_Negative"] = (
             (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        ).round(4)
+        )
 
     return agg_df, org_counts
 
@@ -817,7 +844,7 @@ def extract_summary_data(
         """Calculate percentage from likely + extremely likely / responses."""
         if responses_val == 0:
             return 0
-        return round((likely_val + extremely_likely_val) / responses_val, 2)
+        return (likely_val + extremely_likely_val) / responses_val
 
     # Build orgs_submitting
     orgs_cols = SUMMARY_COLUMNS["orgs_submitting"]

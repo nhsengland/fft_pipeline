@@ -129,7 +129,9 @@ def write_dataframe_to_sheet(
 
     for row_idx, row in enumerate(df.itertuples(index=False), start=start_row):
         for col_idx, value in enumerate(row, start=start_col):
-            sheet.cell(row=row_idx, column=col_idx).value = value
+            # Convert None to "-" for consistent display
+            cell_value = "-" if value is None else value
+            sheet.cell(row=row_idx, column=col_idx).value = cell_value
 
 
 # %%
@@ -453,10 +455,27 @@ def write_england_totals(
                     row=england_rows["excluding_is"], column=col_idx
                 ).value = nhs_row[col_name].values[0]
 
+        # Set specialty columns to "-" for England totals rows (rows 12-13)
+        specialty_columns = ["First Speciality", "Second Speciality"]
+        for specialty_col in specialty_columns:
+            if specialty_col in output_cols:
+                col_idx = output_cols.index(specialty_col) + 1  # +1 for 1-indexed
+                # Set both England rows to "-"
+                sheet.cell(row=england_rows["including_is"], column=col_idx).value = "-"
+                sheet.cell(row=england_rows["excluding_is"], column=col_idx).value = "-"
+
         # Row 14: Selection placeholder
         sheet.cell(
             row=england_rows["selection"], column=name_col_idx
         ).value = "Selection (excluding suppressed data)"
+
+        # Populate Selection row with same values as Total row (England including IS)
+        for col_name in data_columns:
+            if col_name in output_cols and col_name in total_row.columns:
+                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
+                sheet.cell(
+                    row=england_rows["selection"], column=col_idx
+                ).value = total_row[col_name].values[0]
 
 
 # %%
