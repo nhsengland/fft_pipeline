@@ -817,7 +817,7 @@ def extract_summary_data(
         """Calculate percentage from likely + extremely likely / responses."""
         if responses_val == 0:
             return 0
-        return round((likely_val + extremely_likely_val) / responses_val, 2)
+        return (likely_val + extremely_likely_val) / responses_val
 
     # Build orgs_submitting
     orgs_cols = SUMMARY_COLUMNS["orgs_submitting"]
