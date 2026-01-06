@@ -254,14 +254,14 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
     agg_df = df.groupby(group_by_cols, as_index=False)[cols_to_sum].sum()
 
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (
-            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Positive"] = (agg_df["Very Good"] + agg_df["Good"]) / agg_df[
+            "Total Responses"
+        ]
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (
-            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Negative"] = (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df[
+            "Total Responses"
+        ]
 
     return agg_df
 
@@ -596,14 +596,14 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     # Recalculate percentages
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (
-            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Positive"] = (agg_df["Very Good"] + agg_df["Good"]) / agg_df[
+            "Total Responses"
+        ]
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (
-            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Negative"] = (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df[
+            "Total Responses"
+        ]
 
     return agg_df, org_counts
 
