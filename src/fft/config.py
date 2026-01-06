@@ -1,6 +1,7 @@
 """Configuration for FFT pipeline paths, mappings, and constants."""
 
 from pathlib import Path
+from typing import TypedDict
 
 # =============================================================================
 # PATHS
@@ -279,7 +280,35 @@ SUPPRESSION_THRESHOLD = 5  # Responses < 5 get suppressed
 # TEMPLATE CONFIGURATION
 # =============================================================================
 
-TEMPLATE_CONFIG = {
+
+class EnglandRowsConfig(TypedDict):
+    """Type definition for england_rows configuration."""
+
+    including_is: int
+    excluding_is: int
+    selection: int
+
+
+class SheetConfig(TypedDict):
+    """Type definition for individual sheet configuration."""
+
+    sheet_name: str
+    name_column: str
+    england_label_column: str
+    columns: list[str]
+
+
+class TemplateServiceConfig(TypedDict):
+    """Type definition for template service configuration."""
+
+    template_file: str
+    output_prefix: str
+    data_start_row: int
+    england_rows: EnglandRowsConfig
+    sheets: dict[str, SheetConfig]
+
+
+TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
     "inpatient": {
         "template_file": "FFT_IP_template.xlsm",
         "output_prefix": "FFT-inpatient-data",
@@ -344,7 +373,24 @@ TEMPLATE_CONFIG = {
 
 # BS Sheet column positions (1-indexed)
 
-BS_SHEET_CONFIG = {
+
+class LinkedListConfig(TypedDict):
+    """Type definition for linked list configuration."""
+
+    start_col: int
+    pairs: list[list[str]]
+
+
+class BSSheetServiceConfig(TypedDict):
+    """Type definition for BS sheet service configuration."""
+
+    reference_list_start_col: int
+    reference_list_start_row: int
+    reference_columns: list[str]
+    linked_lists: dict[str, LinkedListConfig]
+
+
+BS_SHEET_CONFIG: dict[str, BSSheetServiceConfig] = {
     "inpatient": {
         "reference_list_start_col": 21,  # Column U
         "reference_list_start_row": 2,
@@ -382,7 +428,17 @@ BS_SHEET_CONFIG = {
 # =============================================================================
 
 # Period label configuration (cells that need FFT period updated)
-PERIOD_LABEL_CONFIG = {
+
+
+class PeriodLabelCellConfig(TypedDict):
+    """Type definition for period label cell configuration."""
+
+    sheet: str
+    cell: str
+    template: str
+
+
+PERIOD_LABEL_CONFIG: dict[str, dict[str, PeriodLabelCellConfig]] = {
     "inpatient": {
         "notes_title": {
             "sheet": "Notes",
@@ -411,7 +467,7 @@ PERIOD_LABEL_CONFIG = {
 # =============================================================================
 
 # Percentage column positions per sheet (1-indexed)
-PERCENTAGE_COLUMN_CONFIG = {
+PERCENTAGE_COLUMN_CONFIG: dict[str, dict[str, list[int]]] = {
     "inpatient": {
         "ICB": [5, 6],  # Columns E, F (Percentage Positive, Percentage Negative)
         "Trusts": [6, 7],  # Columns F, G

@@ -46,9 +46,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-
 # %%
-def process_single_file(
+def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pipeline with 14 steps
     service_type: str, file_path: Path, processing_config: dict
 ) -> None:
     """Process a single raw data file and generate output report."""
@@ -122,11 +121,9 @@ def process_single_file(
 
     # Step 4.6: Clean ICB names
     logger.info("Cleaning ICB names...")
-    for level in cleaned_data:
-        if "ICB_Name" in cleaned_data[level].columns:
-            cleaned_data[level]["ICB_Name"] = cleaned_data[level]["ICB_Name"].apply(
-                clean_icb_name
-            )
+    for level, df in cleaned_data.items():
+        if "ICB_Name" in df.columns:
+            cleaned_data[level]["ICB_Name"] = df["ICB_Name"].apply(clean_icb_name)
 
     # Step 5: Aggregate to ICB level
     logger.info("Aggregating to ICB level...")
@@ -277,7 +274,7 @@ def process_single_file(
 
 
 # %%
-def run_pipeline(service_type: str, month: str = None) -> None:
+def run_pipeline(service_type: str, month: str | None = None) -> None:
     """Run the full FFT pipeline for a service type."""
     logger.info(f"Starting FFT pipeline for {service_type}")
 
@@ -315,7 +312,7 @@ def run_pipeline(service_type: str, month: str = None) -> None:
 
 # %%
 def main():
-    """Main entry point for FFT pipeline."""
+    """Process FFT pipeline data from command line arguments."""
     parser = argparse.ArgumentParser(
         description="FFT Pipeline - Process NHS Friends and Family Test data"
     )
@@ -337,11 +334,17 @@ def main():
     args = parser.parse_args()
 
     # Determine service type from args
-    service_type = None
+    service_type: str | None = None
     for flag, stype in SERVICE_TYPES.items():
         if getattr(args, flag, False):
             service_type = stype
             break
+
+    if service_type is None:
+        parser.error("No service type specified")
+        sys.exit(1)  # parser.error() doesn't return, but type checker doesn't know
+
+    assert service_type is not None  # Help type checker understand service_type is str
 
     try:
         run_pipeline(service_type, month=args.month)

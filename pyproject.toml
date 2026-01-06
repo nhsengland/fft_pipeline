@@ -28,13 +28,14 @@ exclude = [""]
 [tool.ruff.lint]
 # Enable rule sets:
 # E = pycodestyle errors
-# W = pycodestyle warnings  
+# W = pycodestyle warnings
 # F = pyflakes (undefined names, unused imports, etc.)
 # I = isort (import sorting)
 # D = pydocstyle (docstring conventions)
 # UP = pyupgrade (modernise syntax)
 # PL = pylint rules
 select = ["E", "W", "F", "I", "D", "UP", "PL"]
+ignore = ["D203", "D213"]  # Ignore conflicting docstring rules
 exclude = [""]
 
 [tool.ruff.lint.isort]

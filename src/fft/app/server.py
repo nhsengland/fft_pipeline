@@ -1,13 +1,45 @@
 """FastHTML web interface for FFT Pipeline."""
 
-import subprocess
-import webbrowser
 import logging
+import platform
+import re
+import subprocess
+import threading
+import time
+import webbrowser
 from pathlib import Path
 
-from fasthtml.common import *
+from fasthtml.common import (
+    A,
+    Button,
+    Details,
+    Div,
+    Form,
+    Label,
+    Li,
+    Option,
+    P,
+    Script,
+    Select,
+    Span,
+    Style,
+    Summary,
+    Titled,
+    Ul,
+    fast_app,
+    serve,
+)
 
-from fft.config import RAW_DIR, OUTPUTS_DIR, SERVICE_TYPES, FILE_PATTERNS
+from fft.config import (
+    FILE_PATTERNS,
+    MONTH_ABBREV,
+    OUTPUTS_DIR,
+    RAW_DIR,
+    SERVICE_TYPES,
+)
+
+# Constants for UI
+MAX_FILES_DISPLAYED = 12  # Maximum files to show in file list before truncating
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,12 +85,15 @@ CSS = Style("""
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: clamp(1.5rem, 3vw, 1.875rem);  /* 24px-30px responsive - LARGER for VI */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+    /* 24px-30px responsive - LARGER for VI */
+    font-size: clamp(1.5rem, 3vw, 1.875rem);
     line-height: 1.6;
     max-width: min(90vw, 1200px);
     margin: 0 auto;
-    padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem);  /* Responsive padding */
+    /* Responsive padding */
+    padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem);
     background: var(--bg);
     color: var(--text);
 }
@@ -77,10 +112,12 @@ h1 {
 label {
     display: block;
     font-weight: 600;
-    font-size: clamp(1.375rem, 2.5vw, 1.625rem);  /* 22px-26px - larger for VI */
+    /* 22px-26px - larger for VI */
+    font-size: clamp(1.375rem, 2.5vw, 1.625rem);
     margin-bottom: 0.75rem;
     color: var(--text);
-    letter-spacing: 0.01em;  /* Slight letter spacing for readability */
+    /* Slight letter spacing for readability */
+    letter-spacing: 0.01em;
 }
 
 .field {
@@ -134,7 +171,12 @@ label {
         right: -1rem;
         bottom: 0;
         width: 1px;
-        background: linear-gradient(180deg, transparent, var(--border), transparent);
+        background: linear-gradient(
+            180deg,
+            transparent,
+            var(--border),
+            transparent
+        );
         opacity: 0.3;
         display: block;
     }
@@ -143,16 +185,21 @@ label {
 select {
     width: 100%;
     padding: clamp(0.75rem, 2vw, 1rem);
-    font-size: clamp(1.5rem, 3vw, 1.875rem);  /* 24px-30px responsive - larger for VI */
+    /* 24px-30px responsive - larger for VI */
+    font-size: clamp(1.5rem, 3vw, 1.875rem);
     border: 2px solid var(--border);
-    border-radius: 4px;  /* Subtle rounding for modern feel */
+    /* Subtle rounding for modern feel */
+    border-radius: 4px;
     background: var(--bg);
     color: var(--text);
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23505a5f' d='M1.5 4L6 8.5 10.5 4'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.\
+org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='\
+%23505a5f' d='M1.5 4L6 8.5 10.5 4'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 1rem center;
-    font-weight: 500;  /* Slightly bolder for better readability */
+    /* Slightly bolder for better readability */
+    font-weight: 500;
     line-height: 1.4;
 }
 
@@ -196,7 +243,8 @@ select:hover {
     font-weight: 700;
     margin-bottom: 1rem;
     color: var(--text-muted);
-    font-size: clamp(1rem, 1.8vw, 1.125rem);  /* 16px-18px */
+    /* 16px-18px */
+    font-size: clamp(1rem, 1.8vw, 1.125rem);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     line-height: 1.2;
@@ -210,7 +258,8 @@ select:hover {
 
 .file-list li {
     padding: clamp(0.5rem, 1vw, 0.75rem) 0;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Monaco, "Consolas", monospace;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Monaco,
+        "Consolas", monospace;
     font-size: clamp(1rem, 2vw, 1.125rem);
     font-weight: 500;
     color: var(--text);
@@ -282,16 +331,22 @@ select:hover {
 
 button {
     padding: clamp(1rem, 2.5vw, 1.375rem) clamp(1.75rem, 4vw, 2.5rem);
-    font-size: clamp(2rem, 5vw, 2.5rem);  /* 32px-40px responsive - HUGE for VI! */
-    font-weight: 700;  /* Bolder weight for more impact */
+    /* 32px-40px responsive - HUGE for VI! */
+    font-size: clamp(2rem, 5vw, 2.5rem);
+    /* Bolder weight for more impact */
+    font-weight: 700;
     border: none;
-    border-radius: 8px;  /* Slightly more rounded for modern feel */
+    /* Slightly more rounded for modern feel */
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
-    letter-spacing: 0.02em;  /* Slightly more spacing for larger text */
+    /* Slightly more spacing for larger text */
+    letter-spacing: 0.02em;
     line-height: 1.1;
-    min-height: clamp(56px, 10vw, 64px);  /* Larger touch targets */
-    text-transform: uppercase;  /* Make it more prominent */
+    /* Larger touch targets */
+    min-height: clamp(56px, 10vw, 64px);
+    /* Make it more prominent */
+    text-transform: uppercase;
 }
 
 button:focus {
@@ -371,7 +426,8 @@ button:disabled:hover {
 
 .status-title {
     font-weight: 700;
-    font-size: clamp(1.5rem, 3.5vw, 1.875rem);  /* 24px-30px - match button size */
+    /* 24px-30px - match button size */
+    font-size: clamp(1.5rem, 3.5vw, 1.875rem);
     margin-bottom: 1rem;
     line-height: 1.3;
     letter-spacing: -0.01em;
@@ -392,8 +448,10 @@ button:disabled:hover {
 }
 
 .log-output {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Monaco, "Consolas", monospace;
-    font-size: clamp(0.9rem, 1.8vw, 1rem);  /* 14px-16px for code readability */
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Monaco,
+        "Consolas", monospace;
+    /* 14px-16px for code readability */
+    font-size: clamp(0.9rem, 1.8vw, 1rem);
     line-height: 1.5;
     white-space: pre-wrap;
     max-height: 60vh;
@@ -508,7 +566,12 @@ button:focus-visible {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255,255,255,0.3),
+        transparent
+    );
     animation: progressShimmer 2s infinite;
 }
 
@@ -537,7 +600,7 @@ button:focus-visible {
 }
 """)
 
-app, rt = fast_app(hdrs=[CSS])
+app, rt = fast_app(hdrs=(CSS,))
 
 # Global progress tracking (simple and reliable)
 pipeline_status = {
@@ -546,12 +609,22 @@ pipeline_status = {
     "stage": "Ready",
     "message": "Ready to run pipeline",
     "logs": [],
-    "success": None
+    "success": None,
 }
 
 
 # --- Helpers ---
-def get_raw_files(service_type: str = None) -> list[Path]:
+def get_raw_files(service_type: str | None = None) -> list[Path]:
+    """Get list of raw data files for the specified service type.
+
+    Args:
+        service_type: Service type to filter files (e.g., 'inpatient', 'ae').
+                     If None, returns all Excel files.
+
+    Returns:
+        List of Path objects for matching raw data files.
+
+    """
     if not RAW_DIR.exists():
         return []
     pattern = FILE_PATTERNS.get(service_type, "*.xlsx") if service_type else "*.xlsx"
@@ -560,12 +633,9 @@ def get_raw_files(service_type: str = None) -> list[Path]:
 
 def get_months(service_type: str) -> list[str]:
     """Extract month patterns (e.g., 'Aug-25') from filenames."""
-    import re
-    from fft.config import MONTH_ABBREV
-
     # Create pattern to match month-year format (e.g., Aug-25, Sep-24)
-    month_abbrevs = '|'.join(MONTH_ABBREV.values())  # Jan|Feb|Mar|etc.
-    pattern = rf'\b({month_abbrevs})-(\d{{2}})\b'
+    month_abbrevs = "|".join(MONTH_ABBREV.values())  # Jan|Feb|Mar|etc.
+    pattern = rf"\b({month_abbrevs})-(\d{{2}})\b"
 
     months = set()
     for file_path in get_raw_files(service_type):
@@ -579,17 +649,14 @@ def get_months(service_type: str) -> list[str]:
 
 def update_progress(progress: int, stage: str, message: str):
     """Update the global progress state."""
-    pipeline_status.update({
-        "progress": progress,
-        "stage": stage,
-        "message": message
-    })
+    pipeline_status.update({"progress": progress, "stage": stage, "message": message})
     # Force immediate update
     logger.info(f"Progress updated: {progress}% - {stage}: {message}")
 
+
 def run_cmd(service: str, month: str) -> tuple[bool, str]:
     """Run the pipeline command with progress tracking."""
-    global pipeline_status
+    global pipeline_status  # noqa: PLW0603 # Justified: Simple progress tracking for web interface
 
     # Completely reset and start progress tracking
     pipeline_status = {
@@ -598,7 +665,7 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         "stage": "Starting",
         "message": "Initializing pipeline...",
         "logs": [],
-        "success": None
+        "success": None,
     }
 
     try:
@@ -617,7 +684,9 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
 
         # Run the actual command
         update_progress(50, "Running", "Executing FFT pipeline...")
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=project_root)
+        result = subprocess.run(
+            cmd, check=False, capture_output=True, text=True, cwd=project_root
+        )
 
         update_progress(75, "Finishing", "Finalizing output...")
 
@@ -633,36 +702,42 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         else:
             update_progress(100, "Failed", "Pipeline execution failed")
 
-        pipeline_status.update({
-            "running": False,
-            "success": success
-        })
+        pipeline_status.update({"running": False, "success": success})
 
         logger.info(f"Return code: {result.returncode}")
-        logger.info(f"Pipeline status after completion: running={pipeline_status['running']}, success={pipeline_status['success']}")
+        logger.info(
+            f"Pipeline status after completion: "
+            f"running={pipeline_status['running']}, "
+            f"success={pipeline_status['success']}"
+        )
         return success, output
 
     except Exception as e:
-        pipeline_status.update({
-            "running": False,
-            "progress": 100,
-            "stage": "Error",
-            "message": f"Error: {str(e)}",
-            "success": False
-        })
+        pipeline_status.update(
+            {
+                "running": False,
+                "progress": 100,
+                "stage": "Error",
+                "message": f"Error: {str(e)}",
+                "success": False,
+            }
+        )
         return False, f"Error running pipeline: {str(e)}"
 
 
 # --- Progress Components ---
-def progress_bar(progress: int):
-    """Create a progress bar component."""
-    return Div(
-        Div(
-            style=f"width: {progress}%",
-            cls="progress-fill"
-        ),
-        cls="progress-bar"
-    )
+def create_progress_bar(progress: int):
+    """Create a progress bar component.
+
+    Args:
+        progress: Integer percentage (0-100)
+
+    Returns:
+        A Div component containing the progress bar
+
+    """
+    return Div(Div(style=f"width: {progress}%", cls="progress-fill"), cls="progress-bar")
+
 
 def progress_display():
     """Create the complete progress display."""
@@ -675,26 +750,46 @@ def progress_display():
                 var submitBtn = document.querySelector('[type="submit"]');
                 if (submitBtn) submitBtn.disabled = false;
             """),
-            style="display: none;"  # Hidden when not running
+            style="display: none;",  # Hidden when not running
         )
 
     # Show progress bar and status only while running
+    progress = pipeline_status["progress"]
+    stage = pipeline_status["stage"]
+    message = pipeline_status["message"]
+
+    # Type guard: ensure progress is an int
+    if not isinstance(progress, int):
+        progress = 0
+
+    # Create progress bar component
+    progress_bar_component = create_progress_bar(progress)
+
     content = [
-        progress_bar(pipeline_status["progress"]),
-        Div(pipeline_status["stage"], cls="progress-stage"),
-        Div(pipeline_status["message"], cls="progress-message"),
+        progress_bar_component,
+        Div(str(stage), cls="progress-stage"),
+        Div(str(message), cls="progress-message"),
         Script("""
             document.getElementById('main-form').classList.add('form-disabled');
             var submitBtn = document.querySelector('[type="submit"]');
             if (submitBtn) submitBtn.disabled = true;
-        """)
+        """),
     ]
 
     return Div(*content, cls="progress-container")
 
+
 # --- Components ---
 def service_select():
-    opts = [Option("-- Select service type --", value="", disabled=True, selected=True)]
+    """Create service type selection dropdown."""
+    opts = [
+        Option(
+            "-- Select service type --",
+            value="",
+            disabled=True,
+            selected=True,
+        )
+    ]
     opts += [Option(name.title(), value=name) for _, name in SERVICE_TYPES.items()]
     return Select(
         *opts,
@@ -710,6 +805,12 @@ def service_select():
 
 
 def month_select(months=None):
+    """Create month selection dropdown.
+
+    Args:
+        months: List of available months, if any.
+
+    """
     opts = [Option("All months", value="all", selected=True)]
     if months:
         opts += [Option(m, value=m) for m in months]
@@ -718,36 +819,48 @@ def month_select(months=None):
         name="month",
         id="month",
         aria_label="Select month for data processing",
-        aria_describedby="month-help"
+        aria_describedby="month-help",
     )
 
 
 def file_list_box(files):
+    """Create file list display component.
+
+    Args:
+        files: List of file Path objects to display.
+
+    """
     if not files:
         return Div(
             Div("Available files", cls="file-list-title"),
-            P("No files found in raw folder",
-              style="padding: 1rem 0; color: var(--text-muted); font-style: italic;"),
+            P(
+                "No files found in raw folder",
+                style=("padding: 1rem 0; color: var(--text-muted); font-style: italic;"),
+            ),
             cls="file-list",
             role="region",
             aria_label="Available data files",
         )
 
     # Show more files and add count indicator
-    display_files = files[:12]  # Increased from 8 to 12
+    display_files = files[:MAX_FILES_DISPLAYED]
     items = [Li(f.name, title=f"File: {f.name}") for f in display_files]
 
-    if len(files) > 12:
+    if len(files) > MAX_FILES_DISPLAYED:
         extra = Li(
-            f"... and {len(files) - 12} more files",
-            style="font-style: italic; color: var(--text-muted); opacity: 0.8;"
+            f"... and {len(files) - MAX_FILES_DISPLAYED} more files",
+            style=("font-style: italic; color: var(--text-muted); opacity: 0.8;"),
         )
         items.append(extra)
 
     title_with_count = Div(
         "Available files",
-        Span(str(len(files)), cls="file-count", title=f"{len(files)} total files"),
-        cls="file-list-title"
+        Span(
+            str(len(files)),
+            cls="file-count",
+            title=f"{len(files)} total files",
+        ),
+        cls="file-list-title",
     )
 
     return Div(
@@ -759,22 +872,29 @@ def file_list_box(files):
     )
 
 
-def status_box(success: bool, msg: str, log: str = None):
+def status_box(success: bool, msg: str, log: str | None = None):
+    """Create status display box.
+
+    Args:
+        success: Whether the operation succeeded.
+        msg: Status message to display.
+        log: Optional log output to show.
+
+    """
     cls = "status success" if success else "status error"
     icon = "✓" if success else "✗"
 
     # Create title with separate icon element for better styling
-    title = Div(
-        Span(icon, style="font-size: 1.5em;"),
-        Span(msg),
-        cls="status-title"
-    )
+    title = Div(Span(icon, style="font-size: 1.5em;"), Span(msg), cls="status-title")
 
     content = [title]
     if log:
         content.append(
             Details(
-                Summary("View detailed log output", style="font-size: 1.1rem; margin-top: 1rem;"),
+                Summary(
+                    "View detailed log output",
+                    style="font-size: 1.1rem; margin-top: 1rem;",
+                ),
                 Div(log, cls="log-output", role="log", aria_live="polite"),
             )
         )
@@ -784,6 +904,7 @@ def status_box(success: bool, msg: str, log: str = None):
 # --- Routes ---
 @rt("/")
 def get():
+    """Render main application page."""
     return Titled(
         "FFT Pipeline",
         # Skip link for accessibility
@@ -793,20 +914,28 @@ def get():
             id="progress-area",
             hx_get="/progress",
             hx_trigger="load, every 2s",
-            hx_swap="innerHTML"
+            hx_swap="innerHTML",
         ),
         Form(
             Div(
                 Div(
                     Label("Service Type", for_="service"),
                     service_select(),
-                    Div("Choose the NHS service type to process", id="service-help", cls="visually-hidden"),
-                    cls="field"
+                    Div(
+                        "Choose the NHS service type to process",
+                        id="service-help",
+                        cls="visually-hidden",
+                    ),
+                    cls="field",
                 ),
                 Div(
                     Label("Month", for_="month"),
                     Div(month_select(), id="month-container"),
-                    Div("Select a specific month or process all available data", id="month-help", cls="visually-hidden"),
+                    Div(
+                        "Select a specific month or process all data",
+                        id="month-help",
+                        cls="visually-hidden",
+                    ),
                     cls="field",
                 ),
                 cls="form-grid",
@@ -834,7 +963,8 @@ def get():
 
 
 @rt("/months")
-def get(service: str = ""):
+def get(service: str = ""):  # noqa: F811 # FastHTML route pattern
+    """Get available months for selected service type."""
     return month_select(get_months(service))
 
 
@@ -848,84 +978,117 @@ def get_progress():
 def get_status_check():
     """Check if pipeline is complete and return final status."""
     # Debug info
-    logger.info(f"Status check: running={pipeline_status['running']}, success={pipeline_status['success']}, stage={pipeline_status['stage']}, progress={pipeline_status['progress']}")
+    logger.info(
+        f"Status check: running={pipeline_status['running']}, "
+        f"success={pipeline_status['success']}, "
+        f"stage={pipeline_status['stage']}, "
+        f"progress={pipeline_status['progress']}"
+    )
 
     try:
         if pipeline_status["running"]:
             # Still running, keep checking
             return Div(
-                f"Pipeline running... (Stage: {pipeline_status['stage']}, {pipeline_status['progress']}%)",
-                style="padding: 1rem; background: var(--bg-alt); border-radius: 6px; margin-top: 1rem;",
+                f"Pipeline running... "
+                f"(Stage: {pipeline_status['stage']}, "
+                f"{pipeline_status['progress']}%)",
+                style=(
+                    "padding: 1rem; "
+                    "background: var(--bg-alt); "
+                    "border-radius: 6px; "
+                    "margin-top: 1rem;"
+                ),
                 hx_get="/status-check",
                 hx_trigger="every 2s",
                 hx_swap="innerHTML",
-                id="pipeline-status"
+                id="pipeline-status",
             )
         elif pipeline_status["success"] is not None:
             # Pipeline complete, show final result
             success = pipeline_status["success"]
-            # Get the logs from the global state if available
-            log_output = "\n".join(pipeline_status["logs"]) if pipeline_status["logs"] else "Pipeline execution completed."
 
-            logger.info(f"Pipeline completed with success={success}, showing final result")
+            # Type guard: ensure success is a bool
+            if not isinstance(success, bool):
+                success = False
+
+            # Get the logs from the global state if available
+            logs = pipeline_status["logs"]
+            if logs and isinstance(logs, list):
+                # Type guard: ensure logs are strings
+                log_output = "\n".join(str(log) for log in logs)
+            else:
+                log_output = "Pipeline execution completed."
+
+            logger.info(
+                f"Pipeline completed with success={success}, showing final result"
+            )
 
             # Don't clear status immediately - let it persist for display
             # It will be reset when a new pipeline starts
 
-            return status_box(
-                success,
-                "Pipeline completed successfully" if success else "Pipeline failed",
-                log_output
-            )
+            msg = "Pipeline completed successfully" if success else "Pipeline failed"
+            return status_box(success, msg, log_output)
         else:
             # No result yet, keep waiting
             return Div(
                 "Waiting for pipeline to start...",
-                style="padding: 1rem; background: var(--bg-alt); border-radius: 6px; margin-top: 1rem;",
+                style=(
+                    "padding: 1rem; "
+                    "background: var(--bg-alt); "
+                    "border-radius: 6px; "
+                    "margin-top: 1rem;"
+                ),
                 hx_get="/status-check",
                 hx_trigger="every 2s",
                 hx_swap="innerHTML",
-                id="pipeline-status"
+                id="pipeline-status",
             )
     except Exception as e:
         logger.error(f"Error in status check: {e}")
         return Div(
             f"Error checking status: {str(e)}",
-            style="padding: 1rem; background: var(--error-bg); color: var(--error); border-radius: 6px; margin-top: 1rem;",
+            style=(
+                "padding: 1rem; "
+                "background: var(--error-bg); "
+                "color: var(--error); "
+                "border-radius: 6px; "
+                "margin-top: 1rem;"
+            ),
             hx_get="/status-check",
             hx_trigger="every 2s",
             hx_swap="innerHTML",
-            id="pipeline-status"
+            id="pipeline-status",
         )
 
 
 @rt("/files")
-def get(service: str = ""):
+def get(service: str = ""):  # noqa: F811 # FastHTML route pattern
+    """Get available files for selected service type."""
     return file_list_box(get_raw_files(service or None))
 
 
 @rt("/run")
 async def post(service: str, month: str):
+    """Handle pipeline execution request."""
     if not service:
         return status_box(False, "Please select a service type")
 
     # Start the pipeline asynchronously so progress can be seen
-    import asyncio
-    import threading
-
     def run_pipeline_thread():
         try:
             run_cmd(service, month)
         except Exception as e:
             # Ensure pipeline status is reset even if there's an exception
-            pipeline_status.update({
-                "running": False,
-                "progress": 100,
-                "stage": "Error",
-                "message": f"Error: {str(e)}",
-                "success": False,
-                "logs": [f"Pipeline error: {str(e)}"]
-            })
+            pipeline_status.update(
+                {
+                    "running": False,
+                    "progress": 100,
+                    "stage": "Error",
+                    "message": f"Error: {str(e)}",
+                    "success": False,
+                    "logs": [f"Pipeline error: {str(e)}"],
+                }
+            )
 
     # Start pipeline in background thread
     thread = threading.Thread(target=run_pipeline_thread)
@@ -935,16 +1098,22 @@ async def post(service: str, month: str):
     # Return immediate response to show progress has started
     return Div(
         "Pipeline started!",
-        style="padding: 1rem; background: var(--bg-alt); border-radius: 6px; margin-top: 1rem;",
+        style=(
+            "padding: 1rem; "
+            "background: var(--bg-alt); "
+            "border-radius: 6px; "
+            "margin-top: 1rem;"
+        ),
         hx_get="/status-check",
         hx_trigger="every 2s",
         hx_swap="innerHTML",
-        id="pipeline-status"
+        id="pipeline-status",
     )
 
 
 @rt("/open-output")
-def post():
+def post():  # noqa: F811 # FastHTML route pattern
+    """Open output directory in file browser."""
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     webbrowser.open(f"file://{OUTPUTS_DIR.absolute()}")
     return ""
@@ -952,22 +1121,16 @@ def post():
 
 def cleanup_port_5001():
     """Kill any processes using port 5001 to ensure clean startup."""
-    import platform
-    import time
-    import re
-
     try:
         if platform.system() == "Windows":
             # Windows: use netstat and taskkill
             result = subprocess.run(
-                ["netstat", "-ano"],
-                capture_output=True,
-                text=True
+                ["netstat", "-ano"], check=False, capture_output=True, text=True
             )
             if result.returncode == 0:
                 pids = []
-                for line in result.stdout.split('\n'):
-                    if ':5001' in line and 'LISTENING' in line:
+                for line in result.stdout.split("\n"):
+                    if ":5001" in line and "LISTENING" in line:
                         # Extract PID from last column
                         parts = line.split()
                         if parts:
@@ -976,18 +1139,27 @@ def cleanup_port_5001():
                                 pids.append(pid)
 
                 for pid in pids:
-                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                    subprocess.run(
+                        ["taskkill", "/F", "/PID", pid],
+                        check=False,
+                        capture_output=True,
+                    )
 
                 if pids:
                     logger.info(f"Cleaned up processes on port 5001: {pids}")
                     time.sleep(0.5)
         else:
             # Unix/Linux/macOS: use lsof and kill
-            result = subprocess.run(["lsof", "-ti:5001"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["lsof", "-ti:5001"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split()
                 for pid in pids:
-                    subprocess.run(["kill", pid], capture_output=True)
+                    subprocess.run(["kill", pid], check=False, capture_output=True)
                 logger.info(f"Cleaned up processes on port 5001: {pids}")
                 time.sleep(0.5)
     except Exception as e:
