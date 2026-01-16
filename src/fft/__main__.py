@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 from fft.config import (
+    IS1_CODE,
+    IS1_NAME,
+    NHS_PROVIDER_KEYWORDS,
     OUTPUT_COLUMNS,
     PROCESSING_LEVELS,
     SERVICE_TYPES,
@@ -103,17 +106,17 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
             continue
         df = cleaned_data[level]
         df["ICB_Code"] = df.apply(
-            lambda row: "IS1"
-            if not (
-                "NHS" in str(row["Trust_Name"]).upper()
-                and "TRUST" in str(row["Trust_Name"]).upper()
+            lambda row: IS1_CODE
+            if not all(
+                keyword in str(row["Trust_Name"]).upper()
+                for keyword in NHS_PROVIDER_KEYWORDS
             )
             else row["ICB_Code"],
             axis=1,
         )
         df["ICB_Name"] = df.apply(
-            lambda row: "INDEPENDENT SECTOR PROVIDERS"
-            if row["ICB_Code"] == "IS1"
+            lambda row: IS1_NAME
+            if row["ICB_Code"] == IS1_CODE
             else row["ICB_Name"],
             axis=1,
         )
@@ -197,7 +200,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     def sort_with_is1_last(df, sort_cols):
         """Sort DataFrame with IS1 entries appearing last."""
         df = df.copy()
-        df["_is_is1"] = df["ICB_Code"] == "IS1"
+        df["_is_is1"] = df["ICB_Code"] == IS1_CODE
         df = df.sort_values(["_is_is1"] + sort_cols)
         df = df.drop(columns=["_is_is1"])
         return df
@@ -244,7 +247,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
 
     # Step 10: Write England totals
     logger.info("Writing England totals...")
-    write_england_totals(wb, service_type, national_df, org_counts)
+    write_england_totals(wb, service_type, national_df, org_counts, suppressed_data, cleaned_data)
 
     # Step 11: Write BS lookup data (use unsuppressed ward data for lookups)
     logger.info("Writing BS lookup data...")

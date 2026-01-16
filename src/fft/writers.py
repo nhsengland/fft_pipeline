@@ -9,6 +9,8 @@ from openpyxl.workbook import Workbook
 
 from fft.config import (
     BS_SHEET_CONFIG,
+    ENGLAND_TOTALS_DATA_SOURCE,
+    IS1_CODE,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
@@ -334,7 +336,7 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
 
 # %%
 def write_england_totals(
-    workbook: Workbook, service_type: str, national_df: pd.DataFrame, org_counts: dict
+    workbook: Workbook, service_type: str, national_df: pd.DataFrame, org_counts: dict, suppressed_data: dict = None, all_level_data: dict = None
 ) -> None:
     """Write England-level totals to rows 12-14 of output sheets.
 
@@ -395,13 +397,6 @@ def write_england_totals(
     config = TEMPLATE_CONFIG[service_type]
     england_rows = config["england_rows"]
 
-    # Extract rows from national_df
-    total_row = national_df[national_df["Submitter_Type"] == "Total"]
-    nhs_row = national_df[national_df["Submitter_Type"] == "NHS"]
-
-    if total_row.empty or nhs_row.empty:
-        raise KeyError("national_df must contain 'Total' and 'NHS' rows")
-
     # Write to each sheet (ICB, Trusts, Sites, Wards)
     for level, sheet_config in config["sheets"].items():
         sheet_name = sheet_config["sheet_name"]
@@ -410,6 +405,39 @@ def write_england_totals(
             continue
 
         sheet = workbook[sheet_name]
+
+        # Determine appropriate data source for this sheet using VBA-aligned approach
+        data_source_level = ENGLAND_TOTALS_DATA_SOURCE.get(sheet_name)
+
+        # Use sheet-appropriate data if available, fallback to national_df
+        if all_level_data and data_source_level and data_source_level in all_level_data:
+            # Aggregate from the appropriate level (ward/site/organisation)
+            level_df = all_level_data[data_source_level]
+
+            # Calculate totals excluding IS1 (NHS only) - filter by ICB_Code != IS1
+            if "ICB_Code" in level_df.columns:
+                nhs_df = level_df[level_df["ICB_Code"] != IS1_CODE]
+            else:
+                nhs_df = level_df  # If no ICB_Code column, assume all NHS
+
+            # Select only numeric columns for aggregation
+            numeric_cols = level_df.select_dtypes(include=['number']).columns
+            nhs_totals = nhs_df[numeric_cols].sum()
+            all_totals = level_df[numeric_cols].sum()
+
+            # Create rows with same structure as national_df
+            total_row = pd.DataFrame([all_totals], index=[0])
+            nhs_row = pd.DataFrame([nhs_totals], index=[0])
+        else:
+            # Fallback to national_df approach
+            if "Submitter_Type" not in national_df.columns:
+                raise KeyError("'Submitter_Type' column not found in national_df")
+
+            total_row = national_df[national_df["Submitter_Type"] == "Total"]
+            nhs_row = national_df[national_df["Submitter_Type"] == "NHS"]
+
+            if total_row.empty or nhs_row.empty:
+                raise KeyError("national_df must contain 'Total' and 'NHS' rows")
 
         # Get output columns for this sheet to determine positioning
         output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
@@ -457,6 +485,14 @@ def write_england_totals(
         sheet.cell(
             row=england_rows["selection"], column=name_col_idx
         ).value = "Selection (excluding suppressed data)"
+
+        # Selection row: Copy England totals (pre-suppression aggregate values)
+        for col_name in data_columns:
+            if col_name in output_cols and col_name in total_row.columns:
+                col_idx = output_cols.index(col_name) + 1
+                sheet.cell(
+                    row=england_rows["selection"], column=col_idx
+                ).value = total_row[col_name].values[0]
 
 
 # %%

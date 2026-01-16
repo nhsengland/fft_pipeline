@@ -569,3 +569,31 @@ SUMMARY_COLUMNS = {
         "is_extremely_unlikely": " IS Extremely Unlikely",
     },
 }
+
+# =============================================================================
+# VALIDATION CONFIGURATION
+# =============================================================================
+
+# Tolerance for floating point comparisons during validation
+VALIDATION_TOLERANCE: float = 1e-5
+
+# Provider type constants
+IS1_CODE = "IS1"
+IS1_NAME = "INDEPENDENT SECTOR PROVIDERS"
+NHS_PROVIDER_KEYWORDS = ["NHS", "TRUST"]
+
+# Sheet and data markers
+SUPPRESSION_MARKER = "*"
+
+# =============================================================================
+# ENGLAND TOTALS DATA SOURCE CONFIGURATION
+# =============================================================================
+
+# Sheet-appropriate data source mapping for England totals calculation
+# Based on VBA formulas - each sheet uses different source data level
+ENGLAND_TOTALS_DATA_SOURCE: dict[str, str] = {
+    "Wards": "ward",           # Uses ward-level data: =SUM('Ward Level'!P:P)
+    "Sites": "site",           # Uses site-level data: =SUM('Site Level'!P:P)
+    "Trusts": "organisation",  # Uses trust-level data: =SUM('Collection Mode'!H:H)
+    "ICB": "organisation",     # Uses org-level data: =SUM('Organisation Level'!M:M)
+}
