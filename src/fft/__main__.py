@@ -214,18 +214,18 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         return df
 
     icb_suppressed = sort_with_is1_last(icb_suppressed, ["ICB_Code"])
-    # Apply VBA-aligned sorting: ICB_Code, Trust_Code
-    org_suppressed = sort_with_is1_last(org_suppressed, ["ICB_Code", "Trust_Code"])
+    # Apply VBA-aligned sorting: ICB_Code, Trust_Name
+    org_suppressed = sort_with_is1_last(org_suppressed, ["ICB_Code", "Trust_Name"])
     if "site" in cleaned_data:
-        # Apply VBA-aligned sorting: ICB_Code, Trust_Code, Site_Name
+        # Apply VBA-aligned sorting: ICB_Code, Trust_Name, Site_Name
         site_suppressed = sort_with_is1_last(
-            site_suppressed, ["ICB_Code", "Trust_Code", "Site_Name"]
+            site_suppressed, ["ICB_Code", "Trust_Name", "Site_Name"]
         )
     if "ward" in cleaned_data:
-        # Apply VBA-aligned simple sorting: ICB_Code, Trust_Code, Site_Name, Ward_Name
-        # VBA's second sort overrides the first, so the final result is just hierarchical
+        # Apply VBA-aligned sorting: ICB_Code, Trust_Name, Site_Name, Ward_Name
+        # VBA sorts by Trust Name (column C), not Trust Code (column B)
         ward_suppressed = sort_with_is1_last(
-            ward_suppressed, ["ICB_Code", "Trust_Code", "Site_Name", "Ward_Name"]
+            ward_suppressed, ["ICB_Code", "Trust_Name", "Site_Name", "Ward_Name"]
         )
 
     # Step 12: Write data to sheets (use SUPPRESSED versions)
