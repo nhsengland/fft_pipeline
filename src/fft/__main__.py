@@ -25,7 +25,6 @@ from fft.processors import (
 )
 from fft.suppression import (
     add_rank_column,
-    add_vba_aligned_rank_column,
     apply_cascade_suppression,
     apply_first_level_suppression,
     apply_second_level_suppression,
@@ -186,7 +185,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     # Ward level suppression (includes second-level and cascade from Site)
     if "ward" in cleaned_data:
         ward_df = cleaned_data["ward"]
-        # Apply standard ranking for now - will use VBA ranking after sorting
+        # Apply ranking with VBA-compliant tie-breaking
         ward_df = add_rank_column(ward_df, group_by_col="Site_Code")
         ward_df = apply_first_level_suppression(ward_df)
         ward_df = apply_second_level_suppression(ward_df, group_by_col="Site_Code")
