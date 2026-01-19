@@ -70,12 +70,12 @@ def standardise_column_names(
 
     # Calculate Percentage_Negative from counts if not present but counts are available
     required_cols = ["Poor", "Very Poor", "Total Responses"]
-    if ("Percentage_Negative" not in df_renamed.columns and
-        all(col in df_renamed.columns for col in required_cols)):
+    if "Percentage_Negative" not in df_renamed.columns and all(
+        col in df_renamed.columns for col in required_cols
+    ):
         df_renamed["Percentage_Negative"] = (
-            (df_renamed["Poor"] + df_renamed["Very Poor"]) /
-            df_renamed["Total Responses"]
-        )
+            df_renamed["Poor"] + df_renamed["Very Poor"]
+        ) / df_renamed["Total Responses"]
 
     # Standardise missing specialty values to '-'
     for col in ["First Speciality", "Second Speciality"]:
@@ -281,14 +281,14 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
     agg_df = df.groupby(group_by_cols, as_index=False)[cols_to_sum].sum()
 
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (
-            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        )
+        agg_df["Percentage_Positive"] = (agg_df["Very Good"] + agg_df["Good"]) / agg_df[
+            "Total Responses"
+        ]
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (
-            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        )
+        agg_df["Percentage_Negative"] = (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df[
+            "Total Responses"
+        ]
 
     return agg_df
 
@@ -623,14 +623,14 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     # Recalculate percentages
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (
-            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        )
+        agg_df["Percentage_Positive"] = (agg_df["Very Good"] + agg_df["Good"]) / agg_df[
+            "Total Responses"
+        ]
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (
-            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        )
+        agg_df["Percentage_Negative"] = (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df[
+            "Total Responses"
+        ]
 
     return agg_df, org_counts
 

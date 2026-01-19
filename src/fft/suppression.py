@@ -123,20 +123,20 @@ def add_vba_aligned_rank_column(df: pd.DataFrame, group_col: str) -> pd.DataFram
     prev_rank = 0
 
     for idx in df.index:
-        responses = df.loc[idx, 'Total Responses']
+        responses = df.loc[idx, "Total Responses"]
         current_group = df.loc[idx, group_col]
 
         if responses == 0:
-            df.loc[idx, 'Rank'] = 0
+            df.loc[idx, "Rank"] = 0
         elif current_group == prev_group:
             # Same group as previous row: increment rank
-            df.loc[idx, 'Rank'] = prev_rank + 1
+            df.loc[idx, "Rank"] = prev_rank + 1
         else:
             # Different group: reset to rank 1
-            df.loc[idx, 'Rank'] = 1
+            df.loc[idx, "Rank"] = 1
 
         prev_group = current_group
-        prev_rank = df.loc[idx, 'Rank']
+        prev_rank = df.loc[idx, "Rank"]
 
     return df
 
@@ -189,7 +189,9 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
 
                 if "Second Speciality" in df_temp.columns:
                     df_temp["_spec2_code"] = df_temp["Second Speciality"].apply(
-                        lambda x: int(str(x).split(" - ")[0]) if " - " in str(x) and str(x) != "0" else 0
+                        lambda x: int(str(x).split(" - ")[0])
+                        if " - " in str(x) and str(x) != "0"
+                        else 0
                     )
                 else:
                     df_temp["_spec2_code"] = 0
@@ -310,8 +312,8 @@ def apply_second_level_suppression(
 
         if rank_1_suppressed:
             # Find Rank 2 rows that are NOT first-level suppressed
-            rank_2_mask = (
-                (df["Rank"] == SECOND_RANK) & (df["First_Level_Suppression"] != 1)
+            rank_2_mask = (df["Rank"] == SECOND_RANK) & (
+                df["First_Level_Suppression"] != 1
             )
             df.loc[rank_2_mask, "Second_Level_Suppression"] = 1
 
@@ -478,7 +480,6 @@ def apply_cascade_suppression(
                 ] = 1
 
     return child_df
-
 
 
 def suppress_values(df: pd.DataFrame) -> pd.DataFrame:

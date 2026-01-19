@@ -301,9 +301,9 @@ def _extract_records_by_key(
 
     # Convert column letters to indices
     if isinstance(key_column, str):
-        key_col_indices = [ord(key_column.upper()) - ord('A') + 1]
+        key_col_indices = [ord(key_column.upper()) - ord("A") + 1]
     else:
-        key_col_indices = [ord(col.upper()) - ord('A') + 1 for col in key_column]
+        key_col_indices = [ord(col.upper()) - ord("A") + 1 for col in key_column]
 
     max_row = worksheet.max_row or start_row
     max_col = worksheet.max_column or 10
@@ -353,13 +353,15 @@ def _compare_records_by_key(
 
             if not _values_are_equivalent(expected_val, actual_val):
                 # Convert column number back to letter for display
-                col_letter = chr(ord('A') + col_num - 1)
-                differences.append({
-                    "sheet": sheet_name,
-                    "cell": f"{col_letter}({key})",  # Show column letter with key
-                    "expected": expected_val,
-                    "actual": actual_val,
-                })
+                col_letter = chr(ord("A") + col_num - 1)
+                differences.append(
+                    {
+                        "sheet": sheet_name,
+                        "cell": f"{col_letter}({key})",  # Show column letter with key
+                        "expected": expected_val,
+                        "actual": actual_val,
+                    }
+                )
 
     return differences
 
@@ -477,9 +479,9 @@ def _values_are_equivalent(val_expected, val_actual) -> bool:
     if val_expected == val_actual:
         return True
 
-    # Handle template compatibility: None/NULL/NA/0/'-' are equivalent for missing values
-    missing_values = {None, "NULL", "NA", "", 0, "0", "-", "nan"}
-    if val_expected in missing_values and val_actual in missing_values:
+    # Handle template compatibility: None/NULL/NA/"0"/"-" are equivalent for missing values
+    missing_vals = {None, "NULL", "NA", "", "0", "-", "nan"}
+    if val_expected in missing_vals and val_actual in missing_vals:
         return True
 
     # For numeric comparisons
@@ -661,7 +663,7 @@ def _extract_month_pattern(filename: str) -> str | None:
 
     """
     # Look for pattern like Jul-25, Aug-25, etc.
-    pattern = r'([A-Z][a-z]{2}-\d{2})'
+    pattern = r"([A-Z][a-z]{2}-\d{2})"
     match = re.search(pattern, filename)
     return match.group(1) if match else None
 
@@ -688,15 +690,15 @@ def _extract_service_type(filename: str) -> str | None:
     filename_lower = filename.lower()
 
     # Check for inpatient patterns
-    if any(pattern in filename_lower for pattern in ['inpatient', '_ip_', 'fft_ip']):
-        return 'inpatient'
+    if any(pattern in filename_lower for pattern in ["inpatient", "_ip_", "fft_ip"]):
+        return "inpatient"
 
     # Check for A&E patterns
-    if any(pattern in filename_lower for pattern in ['_ae_', 'fft_ae']):
-        return 'ae'
+    if any(pattern in filename_lower for pattern in ["_ae_", "fft_ae"]):
+        return "ae"
 
     # Check for ambulance patterns
-    if any(pattern in filename_lower for pattern in ['ambulance', '_amb_', 'fft_amb']):
-        return 'ambulance'
+    if any(pattern in filename_lower for pattern in ["ambulance", "_amb_", "fft_amb"]):
+        return "ambulance"
 
     return None
