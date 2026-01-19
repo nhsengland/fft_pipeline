@@ -1,6 +1,7 @@
 """Data transformation functions."""
 
 # %% Imports
+import numpy as np
 import pandas as pd
 
 from fft.config import (
@@ -73,25 +74,34 @@ def standardise_column_names(
     if "Percentage_Negative" not in df_renamed.columns and all(
         col in df_renamed.columns for col in required_cols
     ):
-        df_renamed["Percentage_Negative"] = (
-            df_renamed["Poor"] + df_renamed["Very Poor"]
-        ) / df_renamed["Total Responses"]
+        df_renamed["Percentage_Negative"] = np.divide(
+            df_renamed["Poor"] + df_renamed["Very Poor"],
+            df_renamed["Total Responses"],
+            out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
+            where=df_renamed["Total Responses"] != 0
+        )
 
     # Standardise missing specialty values to '-'
     for col in ["First Speciality", "Second Speciality"]:
         if col in df_renamed.columns:
-            df_renamed[col] = df_renamed[col].fillna("-").replace(["0", 0, ""], "-")
+            df_renamed[col] = df_renamed[col].fillna("-").replace([""], "-")
 
     # Recalculate percentages from Likert responses (fixes incorrect raw Prop_Pos values)
     if all(col in df_renamed.columns for col in ["Very Good", "Good", "Total Responses"]):
-        df_renamed["Percentage_Positive"] = (
-            (df_renamed["Very Good"] + df_renamed["Good"]) / df_renamed["Total Responses"]
-        ).fillna(0)
+        df_renamed["Percentage_Positive"] = np.divide(
+            df_renamed["Very Good"] + df_renamed["Good"],
+            df_renamed["Total Responses"],
+            out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
+            where=df_renamed["Total Responses"] != 0
+        )
 
     if all(col in df_renamed.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        df_renamed["Percentage_Negative"] = (
-            (df_renamed["Poor"] + df_renamed["Very Poor"]) / df_renamed["Total Responses"]
-        ).fillna(0)
+        df_renamed["Percentage_Negative"] = np.divide(
+            df_renamed["Poor"] + df_renamed["Very Poor"],
+            df_renamed["Total Responses"],
+            out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
+            where=df_renamed["Total Responses"] != 0
+        )
 
     return df_renamed
 
@@ -281,14 +291,20 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
     agg_df = df.groupby(group_by_cols, as_index=False)[cols_to_sum].sum()
 
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (agg_df["Very Good"] + agg_df["Good"]) / agg_df[
-            "Total Responses"
-        ]
+        agg_df["Percentage_Positive"] = np.divide(
+            agg_df["Very Good"] + agg_df["Good"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0
+        )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df[
-            "Total Responses"
-        ]
+        agg_df["Percentage_Negative"] = np.divide(
+            agg_df["Poor"] + agg_df["Very Poor"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0
+        )
 
     return agg_df
 
@@ -623,14 +639,20 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     # Recalculate percentages
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (agg_df["Very Good"] + agg_df["Good"]) / agg_df[
-            "Total Responses"
-        ]
+        agg_df["Percentage_Positive"] = np.divide(
+            agg_df["Very Good"] + agg_df["Good"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0
+        )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df[
-            "Total Responses"
-        ]
+        agg_df["Percentage_Negative"] = np.divide(
+            agg_df["Poor"] + agg_df["Very Poor"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0
+        )
 
     return agg_df, org_counts
 

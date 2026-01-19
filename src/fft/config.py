@@ -274,7 +274,7 @@ OUTPUT_COLUMNS = {
 # SUPPRESSION
 # =============================================================================
 
-SUPPRESSION_THRESHOLD = 5  # Responses <= 5 get suppressed
+SUPPRESSION_THRESHOLD = 5  # Responses < 5 get suppressed
 
 # =============================================================================
 # TEMPLATE CONFIGURATION
