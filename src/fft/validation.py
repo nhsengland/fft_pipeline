@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from openpyxl import load_workbook
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 from .config import VALIDATION_TOLERANCE
 
@@ -301,9 +302,9 @@ def _extract_records_by_key(
 
     # Convert column letters to indices
     if isinstance(key_column, str):
-        key_col_indices = [ord(key_column.upper()) - ord("A") + 1]
+        key_col_indices = [column_index_from_string(key_column.upper())]
     else:
-        key_col_indices = [ord(col.upper()) - ord("A") + 1 for col in key_column]
+        key_col_indices = [column_index_from_string(col.upper()) for col in key_column]
 
     max_row = worksheet.max_row or start_row
     max_col = worksheet.max_column or 10
@@ -353,7 +354,7 @@ def _compare_records_by_key(
 
             if not _values_are_equivalent(expected_val, actual_val):
                 # Convert column number back to letter for display
-                col_letter = chr(ord("A") + col_num - 1)
+                col_letter = get_column_letter(col_num)
                 differences.append(
                     {
                         "sheet": sheet_name,
