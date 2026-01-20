@@ -75,50 +75,6 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
 
 
 # %%
-def identify_service_type(filename: str) -> str:
-    """Identify service type from filename pattern.
-
-    Args:
-        filename: Name of the file
-
-    Returns:
-        'inpatient', 'ae', or 'ambulance'
-
-    >>> from fft.loaders import identify_service_type
-    >>> identify_service_type("FFT_Inpatients_V1 Jul-25.xlsx")
-    'inpatient'
-    >>> identify_service_type("FFT_A&E_V1 Jul-25.xlsx")
-    'ae'
-    >>> identify_service_type("FFT_Ambulance_V1_March.xlsx")
-    'ambulance'
-
-    # Edge case: Abbreviated service name (ip vs inpatient)
-    >>> identify_service_type("FFT_IP_V1_May.xlsx")
-    'inpatient'
-
-    # Edge case: Mixed case filename
-    >>> identify_service_type("fft_ambulance_v1_april.xlsx")
-    'ambulance'
-
-    # Error case: Unknown service type
-    >>> identify_service_type("FFT_Unknown_V1_May.xlsx")
-    Traceback (most recent call last):
-        ...
-    ValueError: Unknown service type in filename: FFT_Unknown_V1_May.xlsx
-
-    """
-    filename_lower = filename.lower()
-    if "ip" in filename_lower or "inpatient" in filename_lower:
-        return "inpatient"
-    elif "ae" in filename_lower or "a&e" in filename_lower:
-        return "ae"
-    elif "ambulance" in filename_lower:
-        return "ambulance"
-    else:
-        raise ValueError(f"Unknown service type in filename: {filename}")
-
-
-# %%
 def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     """Find the n most recent raw data files for the given service type.
 

@@ -11,8 +11,6 @@ from fft.config import (
     SUMMARY_COLUMNS,
     TIME_SERIES_PREFIXES,
 )
-
-
 # %%
 def standardise_column_names(
     df: pd.DataFrame, service_type: str, level: str
@@ -67,8 +65,6 @@ def standardise_column_names(
     column_map = COLUMN_MAPS[service_type][level]
 
     return df.rename(columns=column_map)
-
-
 # %%
 def extract_fft_period(df: pd.DataFrame) -> str:
     """Extract and format the FFT period from raw data.
@@ -154,8 +150,6 @@ def extract_fft_period(df: pd.DataFrame) -> str:
     month_abbrev = MONTH_ABBREV[period_name]
 
     return f"{month_abbrev}-{year_suffix}"
-
-
 # %%
 def remove_unwanted_columns(
     df: pd.DataFrame, service_type: str, level: str
@@ -219,13 +213,11 @@ def remove_unwanted_columns(
     cols_to_drop = [col for col in cols_to_drop if col in df.columns]
 
     return df.drop(columns=cols_to_drop)
-
-
 # %% Aggregation
 def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFrame:
     """Aggregate data by specified grouping columns.
 
-    This is an internal function used by aggregate_to_icb, aggregate_to_trust, etc.
+    This is an internal function used by aggregate_to_icb and aggregate_to_national.
 
     Args:
         df: DataFrame to aggregate
@@ -264,8 +256,6 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
         ).round(4)
 
     return agg_df
-
-
 def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate organisation/trust level data to ICB level.
 
@@ -317,118 +307,6 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
 
     """
     return _aggregate_by_level(df, ["ICB_Code", "ICB_Name"])
-
-
-def aggregate_to_trust(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate site level data to Trust level.
-
-    Groups by Trust Code and Name, sums all response counts, and recalculates percentages.
-
-    Args:
-        df: DataFrame with site-level data (must have Trust_Code, Trust_Name)
-
-    Returns:
-        DataFrame aggregated to Trust level with recalculated percentages
-
-    Raises:
-        KeyError: If required columns are missing
-
-    >>> import pandas as pd
-    >>> import numpy as np
-    >>> from src.fft.processors import aggregate_to_trust
-    >>> df = pd.DataFrame({
-    ...     'Trust_Code': ['T01', 'T01', 'T02'],
-    ...     'Trust_Name': ['Trust A', 'Trust A', 'Trust B'],
-    ...     'Very Good': [10, 5, 8],
-    ...     'Total Responses': [15, 9, 14],
-    ...     'Total Eligible': [100, 50, 80]
-    ... })
-    >>> result = aggregate_to_trust(df)
-    >>> len(result)  # Two trusts
-    2
-    >>> result[result['Trust_Code'] == 'T01']['Total Responses'].values[0]
-    np.int64(24)
-    >>> result[result['Trust_Code'] == 'T02']['Total Responses'].values[0]
-    np.int64(14)
-
-    # Edge case: Missing required columns
-    >>> df_missing = pd.DataFrame({
-    ...     'Trust_Name': ['Trust A'],
-    ...     'Very Good': [10],
-    ...     'Total Responses': [15]
-    ... })
-    >>> aggregate_to_trust(df_missing)
-    Traceback (most recent call last):
-        ...
-    KeyError: "DataFrame missing required columns: ['Trust_Code']"
-
-    # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=[
-    ...     'Trust_Code', 'Trust_Name', 'Very Good', 'Total Responses'
-    ... ])
-    >>> result_empty = aggregate_to_trust(df_empty)
-    >>> len(result_empty)
-    0
-
-    """
-    return _aggregate_by_level(df, ["Trust_Code", "Trust_Name"])
-
-
-def aggregate_to_site(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate ward level data to Site level.
-
-    Groups by Site Code and Name, sums all response counts, and recalculates percentages.
-
-    Args:
-        df: DataFrame with ward-level data (must have Site_Code, Site_Name)
-
-    Returns:
-        DataFrame aggregated to Site level with recalculated percentages
-
-    Raises:
-        KeyError: If required columns are missing
-
-    >>> import pandas as pd
-    >>> import numpy as np
-    >>> from src.fft.processors import aggregate_to_site
-    >>> df = pd.DataFrame({
-    ...     'Site_Code': ['S01', 'S01', 'S02'],
-    ...     'Site_Name': ['Site A', 'Site A', 'Site B'],
-    ...     'Very Good': [10, 5, 8],
-    ...     'Total Responses': [15, 9, 14],
-    ...     'Total Eligible': [100, 50, 80]
-    ... })
-    >>> result = aggregate_to_site(df)
-    >>> len(result)  # Two sites
-    2
-    >>> result[result['Site_Code'] == 'S01']['Total Responses'].values[0]
-    np.int64(24)
-    >>> result[result['Site_Code'] == 'S02']['Total Responses'].values[0]
-    np.int64(14)
-
-    # Edge case: Missing required columns
-    >>> df_missing = pd.DataFrame({
-    ...     'Site_Name': ['Site A'],
-    ...     'Very Good': [10],
-    ...     'Total Responses': [15]
-    ... })
-    >>> aggregate_to_site(df_missing)
-    Traceback (most recent call last):
-        ...
-    KeyError: "DataFrame missing required columns: ['Site_Code']"
-
-    # Edge case: Empty DataFrame
-    >>> df_empty = pd.DataFrame(columns=[
-    ...     'Site_Code', 'Site_Name', 'Very Good', 'Total Responses'
-    ... ])
-    >>> result_empty = aggregate_to_site(df_empty)
-    >>> len(result_empty)
-    0
-
-    """
-    return _aggregate_by_level(df, ["Site_Code", "Site_Name"])
-
-
 def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Aggregate data to national level (NHS vs Independent providers).
 
@@ -606,8 +484,6 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         ).round(4)
 
     return agg_df, org_counts
-
-
 # %%
 def merge_collection_modes(
     org_df: pd.DataFrame, collection_df: pd.DataFrame
@@ -649,8 +525,6 @@ def merge_collection_modes(
             merged[col] = merged[col].fillna(0).astype(int)
 
     return merged
-
-
 # %%
 def clean_icb_name(name: str) -> str:
     """Clean ICB name to match standard format.
@@ -681,8 +555,6 @@ def clean_icb_name(name: str) -> str:
     result = result.replace("INTEGRATED CARE BOARD", "ICB")
 
     return result.strip()
-
-
 # %%
 def convert_fft_period_to_datetime(fft_period: str):
     """Convert FFT period to datetime for Collections Overview lookup.
@@ -715,8 +587,6 @@ def convert_fft_period_to_datetime(fft_period: str):
 
     month_num = month_map[month_abbrev]
     return pd.Timestamp(year_full, month_num, 1)
-
-
 def extract_summary_data(
     time_series_df: pd.DataFrame,
     service_type: str,

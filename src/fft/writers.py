@@ -73,6 +73,20 @@ def load_template(service_type: str) -> Workbook:
 
 
 # %%
+def _has_formula(cell) -> bool:
+    """Check if an openpyxl cell contains a formula.
+
+    Args:
+        cell: openpyxl cell object
+
+    Returns:
+        bool: True if cell contains a formula, False otherwise
+    """
+    if cell.value is None:
+        return False
+    return isinstance(cell.value, str) and cell.value.startswith('=')
+
+
 def write_dataframe_to_sheet(
     workbook: Workbook,
     df: pd.DataFrame,
@@ -420,14 +434,31 @@ def write_england_totals(
             else:
                 nhs_df = level_df  # If no ICB_Code column, assume all NHS
 
-            # Select only numeric columns for aggregation
-            numeric_cols = level_df.select_dtypes(include=['number']).columns
-            nhs_totals = nhs_df[numeric_cols].sum()
-            all_totals = level_df[numeric_cols].sum()
+            # Select only COUNT columns for aggregation (NOT percentages)
+            count_cols = [
+                "Very Good", "Good", "Neither Good nor Poor", "Poor", "Very Poor", "Don't Know",
+                "Total Responses", "Total Eligible"
+            ]
+            available_count_cols = [col for col in count_cols if col in level_df.columns]
 
-            # Create rows with same structure as national_df
+            nhs_totals = nhs_df[available_count_cols].sum()
+            all_totals = level_df[available_count_cols].sum()
+
+            # Create DataFrames and recalculate percentages properly
             total_row = pd.DataFrame([all_totals], index=[0])
             nhs_row = pd.DataFrame([nhs_totals], index=[0])
+
+            # Recalculate percentages for both rows
+            for row_df in [total_row, nhs_row]:
+                if all(col in row_df.columns for col in ["Very Good", "Good", "Total Responses"]):
+                    row_df["Percentage_Positive"] = (
+                        (row_df["Very Good"] + row_df["Good"]) / row_df["Total Responses"]
+                    ).round(4)
+
+                if all(col in row_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
+                    row_df["Percentage_Negative"] = (
+                        (row_df["Poor"] + row_df["Very Poor"]) / row_df["Total Responses"]
+                    ).round(4)
         else:
             # Fallback to national_df approach
             if "Submitter_Type" not in national_df.columns:
@@ -481,18 +512,22 @@ def write_england_totals(
                     row=england_rows["excluding_is"], column=col_idx
                 ).value = nhs_row[col_name].values[0]
 
-        # Row 14: Selection placeholder
+        # Row 14: Selection placeholder - only write label, preserve formulas in data columns
         sheet.cell(
             row=england_rows["selection"], column=name_col_idx
         ).value = "Selection (excluding suppressed data)"
 
-        # Selection row: Copy England totals (pre-suppression aggregate values)
+        # Selection row: PRESERVE EXISTING FORMULAS - don't overwrite cells with formulas
+        # The template has formulas like =SUBTOTAL(9,C15:C57) that should be preserved
         for col_name in data_columns:
             if col_name in output_cols and col_name in total_row.columns:
                 col_idx = output_cols.index(col_name) + 1
-                sheet.cell(
-                    row=england_rows["selection"], column=col_idx
-                ).value = total_row[col_name].values[0]
+                cell = sheet.cell(row=england_rows["selection"], column=col_idx)
+
+                # Only write if cell doesn't already contain a formula
+                if not _has_formula(cell):
+                    cell.value = total_row[col_name].values[0]
+                # If it has a formula, preserve it (formulas will auto-calculate from data)
 
 
 # %%
