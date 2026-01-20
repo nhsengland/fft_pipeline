@@ -115,18 +115,26 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
 
                 # Extract numeric codes from specialty text
                 if "First Speciality" in df_temp.columns:
-                    df_temp["_spec1_code"] = df_temp["First Speciality"].apply(
-                        lambda x: int(str(x).split(" - ")[0]) if " - " in str(x) else 999
-                    )
+                    def parse_spec1_code(x):
+                        if " - " in str(x):
+                            try:
+                                return int(str(x).split(" - ")[0])
+                            except ValueError:
+                                return 999
+                        return 999
+                    df_temp["_spec1_code"] = df_temp["First Speciality"].apply(parse_spec1_code)
                 else:
                     df_temp["_spec1_code"] = 999
 
                 if "Second Speciality" in df_temp.columns:
-                    df_temp["_spec2_code"] = df_temp["Second Speciality"].apply(
-                        lambda x: int(str(x).split(" - ")[0])
-                        if " - " in str(x) and str(x) != "0"
-                        else 0
-                    )
+                    def parse_spec2_code(x):
+                        if " - " in str(x) and str(x) != "0":
+                            try:
+                                return int(str(x).split(" - ")[0])
+                            except ValueError:
+                                return 0
+                        return 0
+                    df_temp["_spec2_code"] = df_temp["Second Speciality"].apply(parse_spec2_code)
                 else:
                     df_temp["_spec2_code"] = 0
 
@@ -177,7 +185,6 @@ def apply_second_level_suppression(
 
     Returns:
         DataFrame with added 'Second_Level_Suppression' column
-
 
     Raises:
         KeyError: If required columns are missing

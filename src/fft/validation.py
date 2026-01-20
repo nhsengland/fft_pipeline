@@ -8,7 +8,7 @@ from typing import TypedDict
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string, get_column_letter
 
-from .config import VALIDATION_TOLERANCE
+from fft.config import VALIDATION_TOLERANCE
 
 # Type for Excel cell values from openpyxl
 CellValue = str | int | float | bool | datetime | None
@@ -613,7 +613,7 @@ def find_matching_ground_truth(output_path: Path, ground_truth_dir: Path) -> Pat
         return None
 
     output_month = _extract_month_pattern(output_path.name)
-    output_service = _extract_service_type(output_path.name)
+    output_service = extract_service_type(output_path.name)
 
     if not output_month or not output_service:
         return None
@@ -624,7 +624,7 @@ def find_matching_ground_truth(output_path: Path, ground_truth_dir: Path) -> Pat
     # Check all files in ground truth directory
     for truth_file in ground_truth_dir.glob("*.xl*"):
         truth_month = _extract_month_pattern(truth_file.name)
-        truth_service = _extract_service_type(truth_file.name)
+        truth_service = extract_service_type(truth_file.name)
 
         if not truth_month or not truth_service:
             continue
@@ -669,7 +669,7 @@ def _extract_month_pattern(filename: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _extract_service_type(filename: str) -> str | None:
+def extract_service_type(filename: str) -> str | None:
     """Extract normalized service type from filename.
 
     Maps various service type representations to standard codes:
@@ -677,15 +677,15 @@ def _extract_service_type(filename: str) -> str | None:
     - ae/AE -> ae
     - ambulance/AMB -> ambulance
 
-    >>> _extract_service_type("FFT-inpatient-data-Jul-25.xlsm")
+    >>> extract_service_type("FFT-inpatient-data-Jul-25.xlsm")
     'inpatient'
-    >>> _extract_service_type("021225_133523_FFT_IP_MacroWebfile_Jul-25.xlsm")
+    >>> extract_service_type("021225_133523_FFT_IP_MacroWebfile_Jul-25.xlsm")
     'inpatient'
-    >>> _extract_service_type("FFT_AE_Aug-25.xlsm")
+    >>> extract_service_type("FFT_AE_Aug-25.xlsm")
     'ae'
-    >>> _extract_service_type("FFT_AMB_Jul-25.xlsm")
+    >>> extract_service_type("FFT_AMB_Jul-25.xlsm")
     'ambulance'
-    >>> _extract_service_type("random-file.xlsm")
+    >>> extract_service_type("random-file.xlsm")
 
     """
     filename_lower = filename.lower()

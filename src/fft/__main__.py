@@ -31,9 +31,9 @@ from fft.suppression import (
     suppress_values,
 )
 from fft.validation import (
-    _extract_service_type,
     compare_data_by_key,
     compare_data_range,
+    extract_service_type,
     find_matching_ground_truth,
     print_comparison_report,
 )
@@ -316,7 +316,7 @@ def validate_existing_outputs(month_filter: str | None = None) -> None:
     validated_count = 0
     for output_path in output_files:
         # Determine service type
-        service_type = _extract_service_type(output_path.name)
+        service_type = extract_service_type(output_path.name)
 
         if not service_type:
             logger.warning(f"Cannot determine service type for: {output_path.name}")

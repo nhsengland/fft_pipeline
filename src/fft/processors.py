@@ -70,37 +70,30 @@ def standardise_column_names(
     df_renamed = df.rename(columns=column_map)
 
     # Calculate Percentage_Negative from counts if not present but counts are available
-    required_cols = ["Poor", "Very Poor", "Total Responses"]
+    required_neg_cols = ["Poor", "Very Poor", "Total Responses"]
     if "Percentage_Negative" not in df_renamed.columns and all(
-        col in df_renamed.columns for col in required_cols
+        col in df_renamed.columns for col in required_neg_cols
     ):
         df_renamed["Percentage_Negative"] = np.divide(
             df_renamed["Poor"] + df_renamed["Very Poor"],
             df_renamed["Total Responses"],
             out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
-            where=df_renamed["Total Responses"] != 0
+            where=df_renamed["Total Responses"] != 0,
         )
 
-    # Standardise missing specialty values to '-'
+    # Standardise missing speciality values to '-'
     for col in ["First Speciality", "Second Speciality"]:
         if col in df_renamed.columns:
             df_renamed[col] = df_renamed[col].fillna("-").replace([""], "-")
 
-    # Recalculate percentages from Likert responses (fixes incorrect raw Prop_Pos values)
-    if all(col in df_renamed.columns for col in ["Very Good", "Good", "Total Responses"]):
+    # Recalculate percentages from Likert responses
+    required_pos_cols = ["Very Good", "Good", "Total Responses"]
+    if all(col in df_renamed.columns for col in required_pos_cols):
         df_renamed["Percentage_Positive"] = np.divide(
             df_renamed["Very Good"] + df_renamed["Good"],
             df_renamed["Total Responses"],
             out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
-            where=df_renamed["Total Responses"] != 0
-        )
-
-    if all(col in df_renamed.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        df_renamed["Percentage_Negative"] = np.divide(
-            df_renamed["Poor"] + df_renamed["Very Poor"],
-            df_renamed["Total Responses"],
-            out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
-            where=df_renamed["Total Responses"] != 0
+            where=df_renamed["Total Responses"] != 0,
         )
 
     return df_renamed
@@ -295,7 +288,7 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
             agg_df["Very Good"] + agg_df["Good"],
             agg_df["Total Responses"],
             out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
-            where=agg_df["Total Responses"] != 0
+            where=agg_df["Total Responses"] != 0,
         )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
@@ -303,7 +296,7 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
             agg_df["Poor"] + agg_df["Very Poor"],
             agg_df["Total Responses"],
             out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
-            where=agg_df["Total Responses"] != 0
+            where=agg_df["Total Responses"] != 0,
         )
 
     return agg_df
@@ -360,10 +353,6 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
 
     """
     return _aggregate_by_level(df, ["ICB_Code", "ICB_Name"])
-
-
-
-
 
 
 def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -537,7 +526,7 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             agg_df["Very Good"] + agg_df["Good"],
             agg_df["Total Responses"],
             out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
-            where=agg_df["Total Responses"] != 0
+            where=agg_df["Total Responses"] != 0,
         )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
@@ -545,7 +534,7 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             agg_df["Poor"] + agg_df["Very Poor"],
             agg_df["Total Responses"],
             out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
-            where=agg_df["Total Responses"] != 0
+            where=agg_df["Total Responses"] != 0,
         )
 
     return agg_df, org_counts
