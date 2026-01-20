@@ -76,7 +76,7 @@ def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
 def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.DataFrame:
     """Add ranking column based on Total Responses within groups.
 
-    Ranks organizations by Total Responses (lowest to highest) within each group.
+    Ranks organisations by Total Responses (lowest to highest) within each group.
     Rows with 0 responses get rank 0. Lowest non-zero response gets rank 1.
 
     Args:
@@ -259,7 +259,7 @@ def apply_cascade_suppression(
     - First/Second level suppression: Based on child's OWN response count
     - Cascade suppression: Based on PARENT's suppression status
 
-    When a parent organization is already suppressed (at its own level),
+    When a parent organisation is already suppressed (at its own level),
     we must also suppress its children to prevent reverse calculation
     using parent totals.
 
@@ -282,7 +282,7 @@ def apply_cascade_suppression(
     Now calculation is impossible: 232 - 150 - ? - ? = unknown
 
     The function flags the 2 lowest-ranked children (Rank 1 and Rank 2)
-    of any suppressed parent organization.
+    of any suppressed parent organisation.
 
     Args:
         parent_df: Parent level DataFrame with suppression flags

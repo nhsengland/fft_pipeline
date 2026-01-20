@@ -13,6 +13,7 @@ from fft.config import (
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
     PERIOD_LABEL_CONFIG,
+    SPECIALITY_COLS,
     TEMPLATE_CONFIG,
     TEMPLATES_DIR,
 )
@@ -129,7 +130,7 @@ def write_dataframe_to_sheet(
 
     for row_idx, row in enumerate(df.itertuples(index=False), start=start_row):
         for col_idx, value in enumerate(row, start=start_col):
-            # Convert NaN values to dashes to match VBA behavior
+            # Convert NaN values to dashes to match VBA behaviour
             if pd.isna(value):
                 value = '-'
             sheet.cell(row=row_idx, column=col_idx).value = value
@@ -441,16 +442,15 @@ def write_england_totals(
             if col_name in output_cols and col_name in total_row.columns:
                 col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
                 value = total_row[col_name].values[0]
-                # Convert NaN values to dashes to match VBA behavior
+                # Convert NaN values to dashes to match VBA behaviour
                 if pd.isna(value):
                     value = '-'
                 sheet.cell(
                     row=england_rows["including_is"], column=col_idx
                 ).value = value
 
-        # Write dashes to specialty columns for England including IS (not applicable at national level)
-        specialty_columns = ["First Speciality", "Second Speciality"]
-        for col_name in specialty_columns:
+        # Write dashes to speciality columns for England including IS (not applicable at national level)
+        for col_name in SPECIALITY_COLS:
             if col_name in output_cols:
                 col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
                 sheet.cell(row=england_rows["including_is"], column=col_idx).value = '-'
@@ -464,16 +464,15 @@ def write_england_totals(
             if col_name in output_cols and col_name in nhs_row.columns:
                 col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
                 value = nhs_row[col_name].values[0]
-                # Convert NaN values to dashes to match VBA behavior
+                # Convert NaN values to dashes to match VBA behaviour
                 if pd.isna(value):
                     value = '-'
                 sheet.cell(
                     row=england_rows["excluding_is"], column=col_idx
                 ).value = value
 
-        # Write dashes to specialty columns for England excluding IS (not applicable at national level)
-        specialty_columns = ["First Speciality", "Second Speciality"]
-        for col_name in specialty_columns:
+        # Write dashes to speciality columns for England excluding IS (not applicable at national level)
+        for col_name in SPECIALITY_COLS:
             if col_name in output_cols:
                 col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
                 sheet.cell(row=england_rows["excluding_is"], column=col_idx).value = '-'
