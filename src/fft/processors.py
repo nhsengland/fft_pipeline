@@ -221,7 +221,8 @@ def remove_unwanted_columns(
 def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFrame:
     """Aggregate data by specified grouping columns.
 
-    This is an internal function used by aggregate_to_icb and aggregate_to_national.
+    This is an internal function used by aggregation helpers such as
+    aggregate_to_icb, aggregate_to_trust, and aggregate_to_site.
 
     Args:
         df: DataFrame to aggregate
