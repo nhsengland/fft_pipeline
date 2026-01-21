@@ -585,6 +585,14 @@ NHS_PROVIDER_KEYWORDS = ["NHS", "TRUST"]
 # Sheet and data markers
 SUPPRESSION_MARKER = "*"
 
+# England rows column skip counts for data extraction
+ENGLAND_ROWS_SKIP_COLUMNS = {
+    "ICB": 2,       # Skip ICB_Code, ICB_Name
+    "Trusts": 3,    # Skip ICB_Code, Trust_Code, Trust_Name
+    "Sites": 5,     # Skip ICB_Code, Trust_Code, Trust_Name, Site_Code, Site_Name
+    "Wards": 6,     # Skip ICB_Code, Trust_Code, Trust_Name, Site_Code, Site_Name, Ward_Name
+}
+
 # =============================================================================
 # ENGLAND TOTALS DATA SOURCE CONFIGURATION
 # =============================================================================
