@@ -12,7 +12,6 @@ from fft.config import (
     RAW_DIR,
 )
 
-
 # %%
 def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
     """Load all sheets from the raw monthly Excel file.
@@ -73,7 +72,6 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
         for sheet in excel_file.sheet_names
     }
 
-
 # %%
 def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     """Find the n most recent raw data files for the given service type.
@@ -122,7 +120,6 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     files = sorted(RAW_DIR.glob(pattern), reverse=True)
 
     return files[:n]
-
 
 # %%
 def load_collections_overview(file: str = COLLECTIONS_OVERVIEW_FILE) -> pd.DataFrame:
