@@ -473,19 +473,9 @@ def write_england_totals(
         # Get output columns for this sheet to determine positioning
         output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
 
-        # Find the index where data columns start (after geographic identifiers)
-        data_columns = [
-            "Total Responses",
-            "Total Eligible",
-            "Percentage_Positive",
-            "Percentage_Negative",
-            "Very Good",
-            "Good",
-            "Neither Good nor Poor",
-            "Poor",
-            "Very Poor",
-            "Don't Know",
-        ]
+        # Extract data columns dynamically from config (exclude geographic identifiers)
+        skip_cols = ENGLAND_ROWS_SKIP_COLUMNS.get(sheet_name, 0)
+        data_columns = output_cols[skip_cols:]
 
         # Row 12: England (including IS)
         name_col_idx = output_cols.index(sheet_config["england_label_column"]) + 1
