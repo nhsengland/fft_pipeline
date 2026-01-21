@@ -9,6 +9,7 @@ from openpyxl.workbook import Workbook
 
 from fft.config import (
     BS_SHEET_CONFIG,
+    ENGLAND_ROWS_SKIP_COLUMNS,
     ENGLAND_TOTALS_DATA_SOURCE,
     IS1_CODE,
     OUTPUT_COLUMNS,
