@@ -88,19 +88,40 @@ sorted_indices = df_temp.sort_values(
 
 **Remaining ward differences**: True ranking logic issues (not formatting)
 
-## Remaining Issues
+---
 
-The specialty-first approach is working correctly. Now I can see the exact issue:
+## 🚨 MAJOR DISCOVERY: Suppression Logic Error (Not Ranking)
 
-  🔍 Pattern Analysis - Oct-25 Ward Rankings
+**Root Cause Shift**: After detailed analysis of Oct-25 ward data, the validation failures are **NOT due to ranking tie-breaking** but due to **systematic suppression logic errors**.
 
-  Site RQ3|RQ301:
-  - Ward 18: expected *, got 6 (under-suppression)
-  - Ward 5 (Short stay surgery): expected 6, got * (over-suppression)
+### ✅ Validated Suppression Issues
 
-  Site R1F|R1F01:
-  - Compton: expected *, got 4 (under-suppression)
-  - Intensive Care Unit: expected 7, got * (over-suppression)
+**Site RQ301 (verified from Excel output):**
+- Ward 2 (104 responses): **INCORRECTLY SUPPRESSED** - shows `*`, no FFT rule should suppress this
+- Ward 5 (25 responses): **INCORRECTLY SUPPRESSED** - shows `*`, should show actual values
+- Ward 18 (86 responses): Correctly not suppressed - shows `6`, but VBA expects `*`
 
-  This shows classic tie-breaking issues - wards are getting opposite suppression results due to ranking differences.
+**Site R1F01 (verified from Excel output):**
+- Alverstone (93 responses): **INCORRECTLY SUPPRESSED** - shows `*`, no FFT rule should suppress this
+- ICU (7 responses): Correctly suppressed - shows `*`
+- Compton (39 responses): Correctly not suppressed - shows `4`, but VBA expects `*`
+
+### ✅ Investigation Results
+
+**Suppression Logic Functions: CONFIRMED WORKING** ✅
+- `apply_first_level_suppression()`: Tested in isolation, works correctly
+- `apply_second_level_suppression()`: Tested in isolation, works correctly
+- `apply_cascade_suppression()`: Parent sites not suppressed, no cascade should occur
+- Isolated testing produces NO incorrect suppressions
+
+**Real vs Test Data Discrepancy** 🔍
+- Suppression functions work correctly in isolation
+- Real pipeline produces incorrect suppressions
+- Issue must be in **data values** or **column mapping** during actual processing
+
+### Current Investigation
+
+- ✅ **Suppression logic functions**: CONFIRMED correct
+- ✅ **Excel output verification**: CONFIRMED matches validation errors
+- 🔍 **Next phase**: Compare actual pipeline data values vs expected values during processing
 
