@@ -535,7 +535,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
             for row in range(data_start_row, sheet.max_row + 1):
                 cell = sheet.cell(row=row, column=col_idx)
                 if cell.value is not None and cell.value != "*":
-                    cell.number_format = "0%"
+                    cell.number_format = "0.0000%"
 
 
 # %%

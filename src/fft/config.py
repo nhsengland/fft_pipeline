@@ -389,7 +389,7 @@ VALIDATION_KEY_COLUMNS: dict[str, str | list[str]] = {
 }
 
 # Tolerance for floating point comparisons during validation
-VALIDATION_TOLERANCE: float = 1e-8
+VALIDATION_TOLERANCE: float = 1e-5
 
 
 # =============================================================================

@@ -110,37 +110,24 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
                 continue
 
             if is_ward_data:
-                # VBA tie-breaking using numeric specialty codes (not text)
+                # VBA tie-breaking using text-based specialty sorting to match VBA exactly
                 df_temp = non_zero_data.copy()
 
-                # Extract numeric codes from specialty text
+                # Use specialty text directly for sorting (VBA sorts alphabetically)
                 if "First Speciality" in df_temp.columns:
-                    def parse_spec1_code(x):
-                        if " - " in str(x):
-                            try:
-                                return int(str(x).split(" - ")[0])
-                            except ValueError:
-                                return 999
-                        return 999
-                    df_temp["_spec1_code"] = df_temp["First Speciality"].apply(parse_spec1_code)
+                    df_temp["_spec1_text"] = df_temp["First Speciality"].astype(str).fillna("")
                 else:
-                    df_temp["_spec1_code"] = 999
+                    df_temp["_spec1_text"] = ""
 
                 if "Second Speciality" in df_temp.columns:
-                    def parse_spec2_code(x):
-                        if " - " in str(x) and str(x) != "0":
-                            try:
-                                return int(str(x).split(" - ")[0])
-                            except ValueError:
-                                return 0
-                        return 0
-                    df_temp["_spec2_code"] = df_temp["Second Speciality"].apply(parse_spec2_code)
+                    df_temp["_spec2_text"] = df_temp["Second Speciality"].astype(str).fillna("")
                 else:
-                    df_temp["_spec2_code"] = 0
+                    df_temp["_spec2_text"] = ""
 
-                # Sort by: Total Responses → Ward_Name → Spec1_Code → Spec2_Code
+                # Sort to match VBA tie-breaking: Total Responses → First Specialty → Second Specialty → Ward_Name
+                # VBA prioritizes specialty-based tie-breaking over ward name alphabetical sorting
                 sorted_indices = df_temp.sort_values(
-                    ["Total Responses", "Ward_Name", "_spec1_code", "_spec2_code"]
+                    ["Total Responses", "_spec1_text", "_spec2_text", "Ward_Name"]
                 ).index
             else:
                 # Standard response-based ranking
