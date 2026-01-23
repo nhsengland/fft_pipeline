@@ -119,9 +119,28 @@ sorted_indices = df_temp.sort_values(
 - Real pipeline produces incorrect suppressions
 - Issue must be in **data values** or **column mapping** during actual processing
 
-### Current Investigation
+### 🎉 BREAKTHROUGH: Column G Discovery
 
-- ✅ **Suppression logic functions**: CONFIRMED correct
-- ✅ **Excel output verification**: CONFIRMED matches validation errors
-- 🔍 **Next phase**: Compare actual pipeline data values vs expected values during processing
+**Root Cause Identified**: Wrong column analyzed for Total Responses
+- **Column G**: Contains actual Total Responses used for suppression calculation
+- **Column H**: Contains display values shown in Excel but NOT used for suppression
+
+### ✅ Validated Results (4 of 6 cases resolved)
+
+**Site RQ301:**
+- Ward 2 (Col G=2): Suppressed=YES ✅ (Correctly < 5 threshold)
+- Ward 18 (Col G=6): Suppressed=NO ✅ (Correctly ≥ 5 threshold)
+- Ward 5 (Col G=6): Suppressed=YES ❌ (Anomaly: ≥ 5 but suppressed)
+
+**Site R1F01:**
+- Alverstone (Col G=2): Suppressed=YES ✅ (Correctly < 5 threshold)
+- Compton (Col G=7): Suppressed=NO ✅ (Correctly ≥ 5 threshold)
+- ICU (Col G=7): Suppressed=YES ❌ (Anomaly: ≥ 5 but suppressed)
+
+### Current Status
+
+- ✅ **67% of validation failures explained** - suppression logic working correctly for most cases
+- ✅ **Column mapping issue resolved** - identified correct data column for analysis
+- 🔍 **2 remaining anomalies**: Ward 5 and ICU (both ≥ 5 responses but suppressed)
+- 🔍 **Next phase**: Investigate second-level/ranking suppression for remaining cases
 
