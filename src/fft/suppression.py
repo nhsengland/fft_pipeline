@@ -110,7 +110,8 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
                 continue
 
             if is_ward_data:
-                # VBA tie-breaking using text-based specialty sorting to match VBA exactly
+                # VBA tie-breaking using specialty-first approach (best performing so far)
+                # This gave us 24 differences vs 60 with ward name approaches
                 df_temp = non_zero_data.copy()
 
                 # Use specialty text directly for sorting (VBA sorts alphabetically)

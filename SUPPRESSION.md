@@ -87,3 +87,20 @@ sorted_indices = df_temp.sort_values(
 - Wards: 284 → 36 differences (87% improvement)
 
 **Remaining ward differences**: True ranking logic issues (not formatting)
+
+## Remaining Issues
+
+The specialty-first approach is working correctly. Now I can see the exact issue:
+
+  🔍 Pattern Analysis - Oct-25 Ward Rankings
+
+  Site RQ3|RQ301:
+  - Ward 18: expected *, got 6 (under-suppression)
+  - Ward 5 (Short stay surgery): expected 6, got * (over-suppression)
+
+  Site R1F|R1F01:
+  - Compton: expected *, got 4 (under-suppression)
+  - Intensive Care Unit: expected 7, got * (over-suppression)
+
+  This shows classic tie-breaking issues - wards are getting opposite suppression results due to ranking differences.
+
