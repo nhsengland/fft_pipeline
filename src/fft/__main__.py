@@ -391,6 +391,7 @@ def _validate_output(output_path: Path, service_type: str) -> None:
         print("\n" + "=" * 60)
         print(f"VALIDATION REPORT: {output_path.name}")
         print("=" * 60)
+        print("Comparing: Pipeline Output vs VBA Ground Truth")
         print_comparison_report(results, max_diffs_per_sheet=max_differences_to_show)
 
         # Summary assessment

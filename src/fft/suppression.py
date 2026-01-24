@@ -150,16 +150,19 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
 def apply_second_level_suppression(
     df: pd.DataFrame, group_by_col: str | None = None
 ) -> pd.DataFrame:
-    """Flag rows requiring second-level suppression.
+    """Flag rows requiring second-level suppression using VBA row-based adjacency.
 
-    When Rank 1 (lowest non-zero responses) has first-level suppression,
-    Rank 2 also gets flagged to prevent reverse calculation.
+    Implements VBA logic: =IF(AND(I1=1, H2=2, I2<>1),1,"")
+    When previous row is first-level suppressed AND current row has Rank 2
+    AND current row is NOT first-level suppressed, flag for second-level suppression.
 
-    Reverse calculation example:
-    If ICB has 3 trusts with responses [*, 80, 150] and ICB total is
-    232, someone could calculate: 232 - 80 - 150 = 2 (revealing the
-    suppressed value). By also suppressing Rank 2, we get [*, *, 150],
-    preventing this calculation.
+    This prevents reverse calculation attacks by suppressing the second-lowest
+    responding organization when the lowest is already suppressed.
+
+    Row-based adjacency logic (matches VBA):
+    - Sort rows by rank within each group
+    - Check if previous row is first-level suppressed
+    - If so, and current row is rank 2 (not first-level), apply second-level
 
     Grouping logic by level:
     - ICB level: No grouping (group_by_col=None)
@@ -189,21 +192,23 @@ def apply_second_level_suppression(
     >>> list(result['Second_Level_Suppression'])
     [0, 1, 0, 0, 0]
 
-    # Edge case: No first-level suppression
-    >>> df_no_suppress = pd.DataFrame({
-    ...     'Rank': [1, 2, 3],
-    ...     'First_Level_Suppression': [0, 0, 0]
+    # Edge case: Non-adjacent ranks (rank 1 suppressed, rank 3 follows)
+    >>> df_gap = pd.DataFrame({
+    ...     'Rank': [1, 3],
+    ...     'First_Level_Suppression': [1, 0]
     ... })
-    >>> result_none = apply_second_level_suppression(df_no_suppress, None)
-    >>> list(result_none['Second_Level_Suppression'])
-    [0, 0, 0]
+    >>> result_gap = apply_second_level_suppression(df_gap, None)
+    >>> list(result_gap['Second_Level_Suppression'])
+    [0, 0]
 
-    # Edge case: Missing columns
-    >>> df_missing = pd.DataFrame({'Rank': [1]})
-    >>> apply_second_level_suppression(df_missing, None)
-    Traceback (most recent call last):
-        ...
-    KeyError: "Required columns missing: ['First_Level_Suppression']"
+    # Edge case: Rank 2 already first-level suppressed
+    >>> df_both = pd.DataFrame({
+    ...     'Rank': [1, 2],
+    ...     'First_Level_Suppression': [1, 1]
+    ... })
+    >>> result_both = apply_second_level_suppression(df_both, None)
+    >>> list(result_both['Second_Level_Suppression'])
+    [0, 0]
 
     """
     required_cols = ["First_Level_Suppression", "Rank"]
@@ -214,8 +219,11 @@ def apply_second_level_suppression(
     df = df.copy()
     df["Second_Level_Suppression"] = 0
 
-    # Suppression workbook logic: =IF(AND(I1=1, H2=2, I2<>1),1,"")
-    # Rank-based evaluation (order-independent)
+    # VBA suppression workbook logic: =IF(AND(I1=1, H2=2, I2<>1),1,"")
+    # Since VBA ranking resets to 1 for each site group, H2=2 means rank 2 within the site
+    # I1=1: Previous row (rank 1 within same site) is first-level suppressed
+    # H2=2: Current row has rank 2 within the site group
+    # I2<>1: Current row is NOT first-level suppressed
 
     if group_by_col:
         # Within each group, check rank relationships
