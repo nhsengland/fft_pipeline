@@ -62,7 +62,7 @@ MODE_COLS = [
 ]
 
 # Specialty columns (ward level only)
-SPECIALTY_COLS = ["First Speciality", "Second Speciality"]
+SPECIALITY_COLS = ["First Speciality", "Second Speciality"]
 
 # =============================================================================
 # MONTH ABBREVIATIONS
@@ -359,7 +359,7 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
                     *TOTALS_COLS,
                     *PERCENTAGE_COLS,
                     *LIKERT_COLS,
-                    *SPECIALTY_COLS,
+                    *SPECIALITY_COLS,
                 ],
             },
         },
