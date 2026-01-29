@@ -32,6 +32,7 @@ def standardise_column_names(
         KeyError: If service_type or level is invalid
 
     >>> import pandas as pd
+    >>> import numpy as np
     >>> from fft.processors import standardise_column_names
     >>> raw_df = pd.DataFrame({
     ...     "Parent org code": [1, 2], "Parent name": ["Org A", "Org B"]
@@ -39,6 +40,24 @@ def standardise_column_names(
     >>> std_df = standardise_column_names(raw_df, "inpatient", "organisation")
     >>> list(std_df.columns)
     ['ICB_Code', 'ICB_Name']
+
+    # Test np.divide: Percentage calculation from Likert counts
+    >>> raw_df_likert = pd.DataFrame({
+    ...     "Parent org code": [1, 2, 3],
+    ...     "Parent name": ["Org A", "Org B", "Org C"],
+    ...     "Very Good": [40, 0, 10],
+    ...     "Good": [30, 0, 20],
+    ...     "Poor": [10, 0, 5],
+    ...     "Very Poor": [5, 0, 5],
+    ...     "Total Responses": [100, 0, 50],
+    ... })
+    >>> std_df_likert = standardise_column_names(
+    ...     raw_df_likert, "inpatient", "organisation"
+    ... )
+    >>> std_df_likert["Percentage_Positive"].tolist()
+    [0.7, nan, 0.6]
+    >>> std_df_likert["Percentage_Negative"].tolist()
+    [0.15, nan, 0.2]
 
     # Edge case: Non-mapped column is preserved
     >>> raw_df_extra = pd.DataFrame({

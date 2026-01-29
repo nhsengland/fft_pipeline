@@ -510,7 +510,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     >>> wb['ICB'].cell(row=15, column=5).value = 0.95
     >>> format_percentage_columns(wb, 'inpatient')
     >>> wb['ICB'].cell(row=15, column=5).number_format
-    '0%'
+    '0.0000%'
 
     # Edge case: Missing sheet in workbook (should skip gracefully)
     >>> from src.fft.config import PERCENTAGE_COLUMN_CONFIG
@@ -523,7 +523,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     >>> wb['ICB'].cell(row=16, column=5).value = "text"
     >>> format_percentage_columns(wb, 'inpatient')  # Should still format other cells
     >>> wb['ICB'].cell(row=15, column=5).number_format  # Verify previous cell formatting
-    '0%'
+    '0.0000%'
 
     # Error case: Unknown service type
     >>> format_percentage_columns(wb, 'unknown')

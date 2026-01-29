@@ -12,6 +12,7 @@ from fft.config import (
     TEMPLATE_CONFIG,
     VALIDATION_CONFIG,
     VALIDATION_KEY_COLUMNS,
+    OUTPUTS_DIR,
 )
 from fft.loaders import find_latest_files, load_raw_data
 from fft.processors import (
@@ -291,7 +292,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
 
 def validate_existing_outputs(month_filter: str | None = None) -> None:
     """Validate existing output files against ground truth."""
-    outputs_dir = Path("data/outputs")
+    outputs_dir = Path(OUTPUTS_DIR)
 
     if not outputs_dir.exists():
         logger.error(f"Outputs directory not found: {outputs_dir}")
