@@ -62,7 +62,7 @@ MODE_COLS = [
 ]
 
 # Specialty columns (ward level only)
-SPECIALTY_COLS = ["First Speciality", "Second Speciality"]
+SPECIALITY_COLS = ["First Speciality", "Second Speciality"]
 
 # =============================================================================
 # MONTH ABBREVIATIONS
@@ -359,7 +359,7 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
                     *TOTALS_COLS,
                     *PERCENTAGE_COLS,
                     *LIKERT_COLS,
-                    *SPECIALTY_COLS,
+                    *SPECIALITY_COLS,
                 ],
             },
         },
@@ -593,4 +593,27 @@ SUMMARY_COLUMNS = {
         "is_unlikely": " IS Unlikely",
         "is_extremely_unlikely": " IS Extremely Unlikely",
     },
+}
+
+# =============================================================================
+# VALIDATION CONFIGURATION
+# =============================================================================
+
+# Tolerance for floating point comparisons during validation
+VALIDATION_TOLERANCE: float = 1e-8
+
+# Provider type constants
+IS1_CODE = "IS1"
+IS1_NAME = "INDEPENDENT SECTOR PROVIDERS"
+NHS_PROVIDER_KEYWORDS = ["NHS", "TRUST"]
+
+# Sheet and data markers
+SUPPRESSION_MARKER = "*"
+
+# England rows column skip counts for Mode of Collection fix
+ENGLAND_ROWS_SKIP_COLUMNS = {
+    "ICB": 2,
+    "Trusts": 3,
+    "Sites": 4,
+    "Wards": 5,
 }

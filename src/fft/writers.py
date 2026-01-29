@@ -9,10 +9,12 @@ from openpyxl.workbook import Workbook
 
 from fft.config import (
     BS_SHEET_CONFIG,
+    ENGLAND_ROWS_SKIP_COLUMNS,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
     PERIOD_LABEL_CONFIG,
+    SPECIALITY_COLS,
     TEMPLATE_CONFIG,
     TEMPLATES_DIR,
 )
@@ -129,9 +131,10 @@ def write_dataframe_to_sheet(
 
     for row_idx, row in enumerate(df.itertuples(index=False), start=start_row):
         for col_idx, value in enumerate(row, start=start_col):
-            # Convert None to "-" for consistent display
-            cell_value = "-" if value is None else value
-            sheet.cell(row=row_idx, column=col_idx).value = cell_value
+            # Convert NaN values to dashes to match VBA behaviour
+            if pd.isna(value):
+                value = '-'
+            sheet.cell(row=row_idx, column=col_idx).value = value
 
 
 # %%
@@ -416,19 +419,9 @@ def write_england_totals(
         # Get output columns for this sheet to determine positioning
         output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
 
-        # Find the index where data columns start (after geographic identifiers)
-        data_columns = [
-            "Total Responses",
-            "Total Eligible",
-            "Percentage_Positive",
-            "Percentage_Negative",
-            "Very Good",
-            "Good",
-            "Neither Good nor Poor",
-            "Poor",
-            "Very Poor",
-            "Don't Know",
-        ]
+        # Extract data columns dynamically from config (exclude geographic identifiers)
+        skip_cols = ENGLAND_ROWS_SKIP_COLUMNS.get(sheet_name, 0)
+        data_columns = output_cols[skip_cols:]
 
         # Row 12: England (including IS)
         name_col_idx = output_cols.index(sheet_config["england_label_column"]) + 1
@@ -439,9 +432,19 @@ def write_england_totals(
         for col_name in data_columns:
             if col_name in output_cols and col_name in total_row.columns:
                 col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
+                value = total_row[col_name].values[0]
+                # Convert NaN values to dashes to match VBA behaviour
+                if pd.isna(value):
+                    value = '-'
                 sheet.cell(
                     row=england_rows["including_is"], column=col_idx
-                ).value = total_row[col_name].values[0]
+                ).value = value
+
+        # Write dashes to speciality columns for England including IS (not applicable at national level)
+        for col_name in SPECIALITY_COLS:
+            if col_name in output_cols:
+                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
+                sheet.cell(row=england_rows["including_is"], column=col_idx).value = '-'
 
         # Row 13: England (excluding IS)
         sheet.cell(
@@ -451,9 +454,19 @@ def write_england_totals(
         for col_name in data_columns:
             if col_name in output_cols and col_name in nhs_row.columns:
                 col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
+                value = nhs_row[col_name].values[0]
+                # Convert NaN values to dashes to match VBA behaviour
+                if pd.isna(value):
+                    value = '-'
                 sheet.cell(
                     row=england_rows["excluding_is"], column=col_idx
-                ).value = nhs_row[col_name].values[0]
+                ).value = value
+
+        # Write dashes to speciality columns for England excluding IS (not applicable at national level)
+        for col_name in SPECIALITY_COLS:
+            if col_name in output_cols:
+                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
+                sheet.cell(row=england_rows["excluding_is"], column=col_idx).value = '-'
 
         # Set specialty columns to "-" for England totals rows (rows 12-13)
         specialty_columns = ["First Speciality", "Second Speciality"]

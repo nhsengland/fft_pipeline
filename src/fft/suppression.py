@@ -77,7 +77,6 @@ def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.DataFrame:
     """Add ranking column based on Total Responses within groups.
-
     For ward data, uses VBA tie-breaking: Ward_Name → First Speciality → Second Speciality.
     For other levels, ranks by Total Responses only.
 
