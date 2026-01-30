@@ -149,19 +149,19 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
 def apply_second_level_suppression(
     df: pd.DataFrame, group_by_col: str | None = None
 ) -> pd.DataFrame:
-    """Flag rows requiring second-level suppression using VBA row-based adjacency.
+    """Flag rows requiring second-level suppression using group-based logic.
 
     Implements VBA logic: =IF(AND(I1=1, H2=2, I2<>1),1,"")
-    When previous row is first-level suppressed AND current row has Rank 2
-    AND current row is NOT first-level suppressed, flag for second-level suppression.
-
-    This prevents reverse calculation attacks by suppressing the second-lowest
+    Prevents reverse calculation attacks by suppressing the second-lowest
     responding organization when the lowest is already suppressed.
 
-    Row-based adjacency logic (matches VBA):
-    - Sort rows by rank within each group
-    - Check if previous row is first-level suppressed
-    - If so, and current row is rank 2 (not first-level), apply second-level
+    Group-based implementation:
+    - Within each group (or entire DataFrame if no grouping), check if ANY
+      row with Rank 1 is first-level suppressed
+    - If so, flag ALL rows with Rank 2 (that are NOT already first-level
+      suppressed) for second-level suppression
+    - This ensures consistent suppression across all Rank 2 entities within
+      the same parent organization
 
     Grouping logic by level:
     - ICB level: No grouping (group_by_col=None)
@@ -218,11 +218,12 @@ def apply_second_level_suppression(
     df = df.copy()
     df["Second_Level_Suppression"] = 0
 
-    # VBA suppression workbook logic: =IF(AND(I1=1, H2=2, I2<>1),1,"")
-    # Since VBA ranking resets to 1 for each site group, H2=2 means rank 2 within the site
-    # I1=1: Previous row (rank 1 within same site) is first-level suppressed
-    # H2=2: Current row has rank 2 within the site group
-    # I2<>1: Current row is NOT first-level suppressed
+    # Group-based implementation of VBA logic: =IF(AND(I1=1, H2=2, I2<>1),1,"")
+    # For each group:
+    # - Check if ANY Rank 1 entity is first-level suppressed
+    # - If so, flag ALL Rank 2 entities (not already first-level suppressed)
+    # This implements the VBA formula's intent using group-wise operations instead
+    # of row-by-row adjacency checks
 
     if group_by_col:
         # Within each group, check rank relationships
