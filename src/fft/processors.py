@@ -55,9 +55,9 @@ def standardise_column_names(
     ...     raw_df_likert, "inpatient", "organisation"
     ... )
     >>> std_df_likert["Percentage_Positive"].tolist()
-    [0.7, nan, 0.6]
+    [0.7, np.nan, 0.6]
     >>> std_df_likert["Percentage_Negative"].tolist()
-    [0.15, nan, 0.2]
+    [0.15, np.nan, 0.2]
 
     # Edge case: Non-mapped column is preserved
     >>> raw_df_extra = pd.DataFrame({
