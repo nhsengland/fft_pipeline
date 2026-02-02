@@ -585,10 +585,19 @@ NHS_PROVIDER_KEYWORDS = ["NHS", "TRUST"]
 # Sheet and data markers
 SUPPRESSION_MARKER = "*"
 
-# England rows column skip counts for Mode of Collection fix
-ENGLAND_ROWS_SKIP_COLUMNS = {
-    "ICB": 2,
-    "Trusts": 3,
-    "Sites": 4,
-    "Wards": 5,
+# Standard England rows columns used by most sheets
+STANDARD_ENGLAND_DATA_COLUMNS = [
+    "Total Responses", "Total Eligible", "Percentage_Positive", "Percentage_Negative",
+    "Very Good", "Good", "Neither Good nor Poor", "Poor", "Very Poor", "Don't Know",
+]
+
+# England rows data columns - explicit configuration for each sheet
+ENGLAND_ROWS_DATA_COLUMNS = {
+    "ICB": STANDARD_ENGLAND_DATA_COLUMNS,
+    "Trusts": STANDARD_ENGLAND_DATA_COLUMNS + [
+        "Mode SMS", "Mode Electronic Discharge", "Mode Electronic Home", "Mode Paper Discharge",
+        "Mode Paper Home", "Mode Telephone", "Mode Online", "Mode Other",
+    ],
+    "Sites": STANDARD_ENGLAND_DATA_COLUMNS,
+    "Wards": STANDARD_ENGLAND_DATA_COLUMNS,
 }
