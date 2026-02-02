@@ -9,7 +9,7 @@ from openpyxl.workbook import Workbook
 
 from fft.config import (
     BS_SHEET_CONFIG,
-    ENGLAND_ROWS_SKIP_COLUMNS,
+    ENGLAND_ROWS_DATA_COLUMNS,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
@@ -419,9 +419,8 @@ def write_england_totals(
         # Get output columns for this sheet to determine positioning
         output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
 
-        # Extract data columns dynamically from config (exclude geographic identifiers)
-        skip_cols = ENGLAND_ROWS_SKIP_COLUMNS.get(sheet_name, 0)
-        data_columns = output_cols[skip_cols:]
+        # Get data columns for England rows from configuration
+        data_columns = ENGLAND_ROWS_DATA_COLUMNS.get(sheet_name, [])
 
         # Row 12: England (including IS)
         name_col_idx = output_cols.index(sheet_config["england_label_column"]) + 1
