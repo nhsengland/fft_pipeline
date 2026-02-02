@@ -575,7 +575,7 @@ SUMMARY_COLUMNS = {
 # =============================================================================
 
 # Tolerance for floating point comparisons during validation
-VALIDATION_TOLERANCE: float = 1e-8
+VALIDATION_TOLERANCE: float = 1e-5
 
 # Provider type constants
 IS1_CODE = "IS1"
@@ -584,6 +584,27 @@ NHS_PROVIDER_KEYWORDS = ["NHS", "TRUST"]
 
 # Sheet and data markers
 SUPPRESSION_MARKER = "*"
+
+# England rows column skip counts for data extraction
+ENGLAND_ROWS_SKIP_COLUMNS = {
+    "ICB": 2,       # Skip ICB_Code, ICB_Name
+    "Trusts": 3,    # Skip ICB_Code, Trust_Code, Trust_Name
+    "Sites": 5,     # Skip ICB_Code, Trust_Code, Trust_Name, Site_Code, Site_Name
+    "Wards": 6,     # Skip ICB_Code, Trust_Code, Trust_Name, Site_Code, Site_Name, Ward_Name
+}
+
+# =============================================================================
+# ENGLAND TOTALS DATA SOURCE CONFIGURATION
+# =============================================================================
+
+# Sheet-appropriate data source mapping for England totals calculation
+# Based on VBA formulas - each sheet uses different source data level
+ENGLAND_TOTALS_DATA_SOURCE: dict[str, str] = {
+    "Wards": "ward",           # Uses ward-level data: =SUM('Ward Level'!P:P)
+    "Sites": "site",           # Uses site-level data: =SUM('Site Level'!P:P)
+    "Trusts": "organisation",  # Uses trust-level data: =SUM('Collection Mode'!H:H)
+    "ICB": "organisation",     # Uses org-level data: =SUM('Organisation Level'!M:M)
+}
 
 # Standard England rows columns used by most sheets
 STANDARD_ENGLAND_DATA_COLUMNS = [

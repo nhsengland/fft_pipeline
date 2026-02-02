@@ -10,6 +10,9 @@ from openpyxl.workbook import Workbook
 from fft.config import (
     BS_SHEET_CONFIG,
     ENGLAND_ROWS_DATA_COLUMNS,
+    ENGLAND_ROWS_SKIP_COLUMNS,
+    ENGLAND_TOTALS_DATA_SOURCE,
+    IS1_CODE,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
@@ -73,6 +76,20 @@ def load_template(service_type: str) -> Workbook:
 
 
 # %%
+def _has_formula(cell) -> bool:
+    """Check if an openpyxl cell contains a formula.
+
+    Args:
+        cell: openpyxl cell object
+
+    Returns:
+        bool: True if cell contains a formula, False otherwise
+    """
+    if cell.value is None:
+        return False
+    return isinstance(cell.value, str) and cell.value.startswith('=')
+
+
 def write_dataframe_to_sheet(
     workbook: Workbook,
     df: pd.DataFrame,
@@ -339,7 +356,7 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
 
 # %%
 def write_england_totals(
-    workbook: Workbook, service_type: str, national_df: pd.DataFrame, org_counts: dict
+    workbook: Workbook, service_type: str, national_df: pd.DataFrame, org_counts: dict, suppressed_data: dict = None, all_level_data: dict = None
 ) -> None:
     """Write England-level totals to rows 12-14 of output sheets.
 
@@ -400,13 +417,6 @@ def write_england_totals(
     config = TEMPLATE_CONFIG[service_type]
     england_rows = config["england_rows"]
 
-    # Extract rows from national_df
-    total_row = national_df[national_df["Submitter_Type"] == "Total"]
-    nhs_row = national_df[national_df["Submitter_Type"] == "NHS"]
-
-    if total_row.empty or nhs_row.empty:
-        raise KeyError("national_df must contain 'Total' and 'NHS' rows")
-
     # Write to each sheet (ICB, Trusts, Sites, Wards)
     for level, sheet_config in config["sheets"].items():
         sheet_name = sheet_config["sheet_name"]
@@ -415,6 +425,56 @@ def write_england_totals(
             continue
 
         sheet = workbook[sheet_name]
+
+        # Determine appropriate data source for this sheet using VBA-aligned approach
+        data_source_level = ENGLAND_TOTALS_DATA_SOURCE.get(sheet_name)
+
+        # Use sheet-appropriate data if available, fallback to national_df
+        if all_level_data and data_source_level and data_source_level in all_level_data:
+            # Aggregate from the appropriate level (ward/site/organisation)
+            level_df = all_level_data[data_source_level]
+
+            # Calculate totals excluding IS1 (NHS only) - filter by ICB_Code != IS1
+            if "ICB_Code" in level_df.columns:
+                nhs_df = level_df[level_df["ICB_Code"] != IS1_CODE]
+            else:
+                nhs_df = level_df  # If no ICB_Code column, assume all NHS
+
+            # Select only COUNT columns for aggregation (NOT percentages)
+            count_cols = [
+                "Very Good", "Good", "Neither Good nor Poor", "Poor", "Very Poor", "Don't Know",
+                "Total Responses", "Total Eligible"
+            ]
+            available_count_cols = [col for col in count_cols if col in level_df.columns]
+
+            nhs_totals = nhs_df[available_count_cols].sum()
+            all_totals = level_df[available_count_cols].sum()
+
+            # Create DataFrames and recalculate percentages properly
+            total_row = pd.DataFrame([all_totals], index=[0])
+            nhs_row = pd.DataFrame([nhs_totals], index=[0])
+
+            # Recalculate percentages for both rows
+            for row_df in [total_row, nhs_row]:
+                if all(col in row_df.columns for col in ["Very Good", "Good", "Total Responses"]):
+                    row_df["Percentage_Positive"] = (
+                        (row_df["Very Good"] + row_df["Good"]) / row_df["Total Responses"]
+                    ).round(4)
+
+                if all(col in row_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
+                    row_df["Percentage_Negative"] = (
+                        (row_df["Poor"] + row_df["Very Poor"]) / row_df["Total Responses"]
+                    ).round(4)
+        else:
+            # Fallback to national_df approach
+            if "Submitter_Type" not in national_df.columns:
+                raise KeyError("'Submitter_Type' column not found in national_df")
+
+            total_row = national_df[national_df["Submitter_Type"] == "Total"]
+            nhs_row = national_df[national_df["Submitter_Type"] == "NHS"]
+
+            if total_row.empty or nhs_row.empty:
+                raise KeyError("national_df must contain 'Total' and 'NHS' rows")
 
         # Get output columns for this sheet to determine positioning
         output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
@@ -467,10 +527,22 @@ def write_england_totals(
                 col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
                 sheet.cell(row=england_rows["excluding_is"], column=col_idx).value = '-'
 
-        # Row 14: Selection placeholder
+        # Row 14: Selection placeholder - only write label, preserve formulas in data columns
         sheet.cell(
             row=england_rows["selection"], column=name_col_idx
         ).value = "Selection (excluding suppressed data)"
+
+        # Selection row: PRESERVE EXISTING FORMULAS - don't overwrite cells with formulas
+        # The template has formulas like =SUBTOTAL(9,C15:C57) that should be preserved
+        for col_name in data_columns:
+            if col_name in output_cols and col_name in total_row.columns:
+                col_idx = output_cols.index(col_name) + 1
+                cell = sheet.cell(row=england_rows["selection"], column=col_idx)
+
+                # Only write if cell doesn't already contain a formula
+                if not _has_formula(cell):
+                    cell.value = total_row[col_name].values[0]
+                # If it has a formula, preserve it (formulas will auto-calculate from data)
 
 
 # %%
