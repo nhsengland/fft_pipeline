@@ -62,7 +62,7 @@ MODE_COLS = [
 ]
 
 # Specialty columns (ward level only)
-SPECIALTY_COLS = ["First Speciality", "Second Speciality"]
+SPECIALITY_COLS = ["First Speciality", "Second Speciality"]
 
 # =============================================================================
 # MONTH ABBREVIATIONS
@@ -359,7 +359,7 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
                     *TOTALS_COLS,
                     *PERCENTAGE_COLS,
                     *LIKERT_COLS,
-                    *SPECIALTY_COLS,
+                    *SPECIALITY_COLS,
                 ],
             },
         },
@@ -604,4 +604,21 @@ ENGLAND_TOTALS_DATA_SOURCE: dict[str, str] = {
     "Sites": "site",           # Uses site-level data: =SUM('Site Level'!P:P)
     "Trusts": "organisation",  # Uses trust-level data: =SUM('Collection Mode'!H:H)
     "ICB": "organisation",     # Uses org-level data: =SUM('Organisation Level'!M:M)
+}
+
+# Standard England rows columns used by most sheets
+STANDARD_ENGLAND_DATA_COLUMNS = [
+    "Total Responses", "Total Eligible", "Percentage_Positive", "Percentage_Negative",
+    "Very Good", "Good", "Neither Good nor Poor", "Poor", "Very Poor", "Don't Know",
+]
+
+# England rows data columns - explicit configuration for each sheet
+ENGLAND_ROWS_DATA_COLUMNS = {
+    "ICB": STANDARD_ENGLAND_DATA_COLUMNS,
+    "Trusts": STANDARD_ENGLAND_DATA_COLUMNS + [
+        "Mode SMS", "Mode Electronic Discharge", "Mode Electronic Home", "Mode Paper Discharge",
+        "Mode Paper Home", "Mode Telephone", "Mode Online", "Mode Other",
+    ],
+    "Sites": STANDARD_ENGLAND_DATA_COLUMNS,
+    "Wards": STANDARD_ENGLAND_DATA_COLUMNS,
 }
