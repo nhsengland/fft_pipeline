@@ -1,5 +1,5 @@
 """FastHTML web interface for the FFT Pipeline."""
 
-from .server import app
+from fft.app.server import app
 
 __all__ = ["app"]

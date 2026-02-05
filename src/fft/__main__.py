@@ -13,6 +13,9 @@ from fft.config import (
     PROCESSING_LEVELS,
     SERVICE_TYPES,
     TEMPLATE_CONFIG,
+    VALIDATION_CONFIG,
+    VALIDATION_KEY_COLUMNS,
+    OUTPUTS_DIR,
 )
 from fft.loaders import find_latest_files, load_raw_data
 from fft.processors import (
@@ -30,6 +33,13 @@ from fft.suppression import (
     apply_first_level_suppression,
     apply_second_level_suppression,
     suppress_values,
+)
+from fft.validation import (
+    compare_data_by_key,
+    compare_data_range,
+    extract_service_type,
+    find_matching_ground_truth,
+    print_comparison_report,
 )
 from fft.writers import (
     format_percentage_columns,
@@ -52,7 +62,7 @@ logger = logging.getLogger(__name__)
 # %%
 def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pipeline with 14 steps
     service_type: str, file_path: Path, processing_config: dict
-) -> None:
+) -> Path | None:
     """Process a single raw data file and generate output report."""
     levels = processing_config["levels"]
     sheet_mapping = processing_config["sheet_mapping"]
@@ -98,7 +108,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         logger.warning(f"No data found in {file_path.name} - skipping")
         return
 
-    # Step 4.5: Mark independent sector providers across all levels
+    # Step 5: Mark independent sector providers across all levels
     logger.info("Marking independent sector providers...")
 
     for level in ["organisation", "site", "ward"]:
@@ -122,23 +132,23 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         )
         cleaned_data[level] = df
 
-    # Step 4.6: Clean ICB names
+    # Step 6: Clean ICB names
     logger.info("Cleaning ICB names...")
     for level, df in cleaned_data.items():
         if "ICB_Name" in df.columns:
             cleaned_data[level]["ICB_Name"] = df["ICB_Name"].apply(clean_icb_name)
 
-    # Step 5: Aggregate to ICB level
+    # Step 7: Aggregate to ICB level
     logger.info("Aggregating to ICB level...")
     org_df = cleaned_data["organisation"]
     icb_df = aggregate_to_icb(org_df)
 
-    # Step 6: Aggregate to national level
+    # Step 8: Aggregate to national level
     logger.info("Aggregating to national level...")
     national_df, org_counts = aggregate_to_national(org_df)
     logger.info(f"Organisation counts: {org_counts}")
 
-    # Step 7: Apply suppression to each level (top-down cascade)
+    # Step 9: Apply suppression to each level (top-down cascade)
     logger.info("Applying suppression...")
 
     # ICB level suppression (no parent)
@@ -176,9 +186,10 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         ].max(axis=1)
         site_suppressed = suppress_values(site_df.copy())
 
-    # Ward level suppression (cascade from Site)
+    # Ward level suppression (includes second-level and cascade from Site)
     if "ward" in cleaned_data:
         ward_df = cleaned_data["ward"]
+        # Apply ranking with VBA-compliant tie-breaking
         ward_df = add_rank_column(ward_df, group_by_col="Site_Code")
         ward_df = apply_first_level_suppression(ward_df)
         ward_df = apply_second_level_suppression(ward_df, group_by_col="Site_Code")
@@ -190,11 +201,11 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         ].max(axis=1)
         ward_suppressed = suppress_values(ward_df.copy())
 
-    # Step 8: Load template workbook
+    # Step 10: Load template workbook
     logger.info("Loading template...")
     wb = load_template(service_type)
 
-    # Step 8.5: Sort DataFrames (NHS entries alphabetically, IS1 at end)
+    # Step 11: Sort DataFrames (NHS entries alphabetically, IS1 at end)
     logger.info("Sorting data...")
 
     def sort_with_is1_last(df, sort_cols):
@@ -206,17 +217,21 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         return df
 
     icb_suppressed = sort_with_is1_last(icb_suppressed, ["ICB_Code"])
-    org_suppressed = sort_with_is1_last(org_suppressed, ["ICB_Code", "Trust_Code"])
+    # Apply VBA-aligned sorting: ICB_Code, Trust_Name
+    org_suppressed = sort_with_is1_last(org_suppressed, ["ICB_Code", "Trust_Name"])
     if "site" in cleaned_data:
+        # Apply VBA-aligned sorting: ICB_Code, Trust_Name, Site_Name
         site_suppressed = sort_with_is1_last(
-            site_suppressed, ["ICB_Code", "Trust_Code", "Site_Code"]
+            site_suppressed, ["ICB_Code", "Trust_Name", "Site_Name"]
         )
     if "ward" in cleaned_data:
+        # Apply VBA-aligned sorting: ICB_Code, Trust_Name, Site_Name, Ward_Name
+        # VBA sorts by Trust Name (column C), not Trust Code (column B)
         ward_suppressed = sort_with_is1_last(
-            ward_suppressed, ["ICB_Code", "Trust_Code", "Site_Code", "Ward_Name"]
+            ward_suppressed, ["ICB_Code", "Trust_Name", "Site_Name", "Ward_Name"]
         )
 
-    # Step 9: Write data to sheets (use SUPPRESSED versions)
+    # Step 12: Write data to sheets (use SUPPRESSED versions)
     suppressed_data = {
         "icb": icb_suppressed,
         "organisation": org_suppressed,
@@ -245,11 +260,11 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
 
             write_dataframe_to_sheet(wb, output_df, sheet_name, data_start_row)
 
-    # Step 10: Write England totals
+    # Step 13: Write England totals
     logger.info("Writing England totals...")
     write_england_totals(wb, service_type, national_df, org_counts, suppressed_data, cleaned_data)
 
-    # Step 11: Write BS lookup data (use unsuppressed ward data for lookups)
+    # Step 14: Write BS lookup data (use unsuppressed ward data for lookups)
     logger.info("Writing BS lookup data...")
     if "ward" in cleaned_data:
         write_bs_lookup_data(wb, ward_df, service_type)
@@ -258,22 +273,152 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     else:
         write_bs_lookup_data(wb, org_df, service_type)
 
-    # Step 11.5: Populate Summary sheet
+    # Step 15: Populate Summary sheet
     logger.info("Populating Summary sheet...")
     populate_summary_sheet(wb, service_type, fft_period)
 
-    # Step 12: Update period labels
+    # Step 16: Update period labels
     logger.info("Updating period labels...")
     update_period_labels(wb, service_type, fft_period)
 
-    # Step 13: Format percentage columns
+    # Step 17: Format percentage columns
     logger.info("Formatting percentage columns...")
     format_percentage_columns(wb, service_type)
 
-    # Step 14: Save output
+    # Step 18: Save output
     logger.info("Saving output...")
     output_path = save_output(wb, service_type, fft_period)
     logger.info(f"✓ Output saved to: {output_path}")
+
+    return output_path
+
+
+def validate_existing_outputs(month_filter: str | None = None) -> None:
+    """Validate existing output files against ground truth."""
+    outputs_dir = Path(OUTPUTS_DIR)
+
+    if not outputs_dir.exists():
+        logger.error(f"Outputs directory not found: {outputs_dir}")
+        sys.exit(1)
+
+    # Find output files
+    output_files = list(outputs_dir.glob("*.xl*"))
+    output_files = [f for f in output_files if f.is_file()]
+
+    if month_filter:
+        output_files = [f for f in output_files if month_filter in f.name]
+
+    if not output_files:
+        msg = f"No output files found in {outputs_dir}"
+        if month_filter:
+            msg += f" for month: {month_filter}"
+        logger.error(msg)
+        sys.exit(1)
+
+    logger.info(f"Found {len(output_files)} output file(s) to validate")
+
+    validated_count = 0
+    for output_path in output_files:
+        # Determine service type
+        service_type = extract_service_type(output_path.name)
+
+        if not service_type:
+            logger.warning(f"Cannot determine service type for: {output_path.name}")
+            continue
+
+        logger.info(f"Validating {output_path.name} (service: {service_type})")
+
+        try:
+            _validate_output(output_path, service_type)
+            validated_count += 1
+        except Exception as e:
+            logger.error(f"Validation failed for {output_path.name}: {e}")
+
+    if validated_count == 0:
+        logger.error("No files could be validated")
+        sys.exit(1)
+
+    logger.info(f"✓ Validation completed for {validated_count} file(s)")
+
+
+def _validate_output(output_path: Path, service_type: str) -> None:
+    """Validate generated output against ground truth files.
+
+    Compares pipeline output from data/outputs/ against
+    corresponding ground truth from data/outputs/ground_truth/.
+    """
+    # Find best matching ground truth file using smart pattern matching
+    ground_truth_dir = output_path.parent / "ground_truth"
+    ground_truth_path = find_matching_ground_truth(output_path, ground_truth_dir)
+
+    if ground_truth_path is None:
+        logger.warning(f"No matching ground truth file found in: {ground_truth_dir}")
+        logger.warning(
+            "Skipping validation - place matching ground truth file in "
+            "data/outputs/ground_truth/ (matches by month and service type)"
+        )
+        return
+
+    logger.info(f"Found matching ground truth: {ground_truth_path.name}")
+    logger.info(f"Comparing against: {ground_truth_path}")
+
+    # Compare all sheets, focusing on data areas (skip template control rows)
+    max_differences_to_show = 25  # Show enough detail but keep readable
+
+    try:
+        results = []
+        sheets_to_check = VALIDATION_CONFIG.get(service_type, [])
+
+        for sheet_name in sheets_to_check:
+            # Use key-based comparison for sheets with configured key columns
+            if sheet_name in VALIDATION_KEY_COLUMNS:
+                result = compare_data_by_key(
+                    expected_path=ground_truth_path,
+                    actual_path=output_path,
+                    sheet_name=sheet_name,
+                    key_column=VALIDATION_KEY_COLUMNS[sheet_name],
+                    start_row=15,
+                    data_only=True,
+                )
+            else:
+                # Use row-based comparison for other sheets
+                result = compare_data_range(
+                    expected_path=ground_truth_path,
+                    actual_path=output_path,
+                    sheet_name=sheet_name,
+                    start_row=15,
+                    data_only=True,
+                )
+            results.append(result)
+
+        # Generate comprehensive validation report
+        print("\n" + "=" * 60)
+        print(f"VALIDATION REPORT: {output_path.name}")
+        print("=" * 60)
+        print("Comparing: Pipeline Output vs VBA Ground Truth")
+        print_comparison_report(results, max_diffs_per_sheet=max_differences_to_show)
+
+        # Summary assessment
+        total_sheets = len(
+            [
+                r
+                for r in results
+                if not (r["missing_in_actual"] or r["missing_in_expected"])
+            ]
+        )
+        identical_sheets = len([r for r in results if r["identical"]])
+
+        if total_sheets > 0 and identical_sheets == total_sheets:
+            logger.info("✓ Validation PASSED - All sheets identical to ground truth")
+        elif total_sheets == 0:
+            logger.warning("⚠ Validation INCOMPLETE - No comparable sheets found")
+        else:
+            msg = f"✗ Validation FAILED - {identical_sheets}/{total_sheets} sheets match"
+            logger.warning(msg)
+
+    except Exception as e:
+        logger.error(f"Validation failed with error: {e}")
+        raise
 
 
 # %%
@@ -326,6 +471,11 @@ def main():
         group.add_argument(
             f"--{flag}", action="store_true", help=f"Process {service_type.title()} data"
         )
+    group.add_argument(
+        "--validate",
+        action="store_true",
+        help="Validate existing output against ground truth",
+    )
 
     parser.add_argument(
         "--month",
@@ -336,25 +486,33 @@ def main():
 
     args = parser.parse_args()
 
-    # Determine service type from args
-    service_type: str | None = None
-    for flag, stype in SERVICE_TYPES.items():
-        if getattr(args, flag, False):
-            service_type = stype
-            break
+    if args.validate:
+        # Validation-only mode
+        try:
+            validate_existing_outputs(args.month)
+        except Exception as e:
+            logger.error(f"Validation failed: {e}", exc_info=True)
+            sys.exit(1)
+    else:
+        # Pipeline mode - determine service type from args
+        service_type: str | None = None
+        for flag, stype in SERVICE_TYPES.items():
+            if getattr(args, flag, False):
+                service_type = stype
+                break
 
-    if service_type is None:
-        parser.error("No service type specified")
-        sys.exit(1)  # parser.error() doesn't return, but type checker doesn't know
+        if service_type is None:
+            parser.error("No service type specified")
+            sys.exit(1)
 
-    assert service_type is not None  # Help type checker understand service_type is str
+        assert service_type is not None
 
-    try:
-        run_pipeline(service_type, month=args.month)
-        logger.info("✓ Pipeline completed successfully")
-    except Exception as e:
-        logger.error(f"Pipeline failed: {e}", exc_info=True)
-        sys.exit(1)
+        try:
+            run_pipeline(service_type, month=args.month)
+            logger.info("✓ Pipeline completed successfully")
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}", exc_info=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
