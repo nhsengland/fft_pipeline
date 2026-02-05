@@ -29,18 +29,6 @@ Processes data at multiple geographic levels:
 - Calculates percentage positive/negative at each level
 - Maintains organisational hierarchy throughout
 
-### Rolling Totals
-Maintains historical cumulative statistics in CSV format:
-- Monthly submission counts (NHS vs Independent providers)
-- Cumulative response totals
-- Monthly percentage positive/negative trends
-
-### Template-Based Output
-Generates macro-enabled Excel reports matching NHS England publication standards:
-- Pre-formatted sheets for Summary, ICB, Trust, Site, Ward levels
-- Dynamic filtering via backend dropdown lists
-- Consistent formatting across all service types
-
 ### Web Interface
 Simple browser-based interface for interactive pipeline operations:
 - Service type selection with dynamic file discovery
@@ -104,10 +92,13 @@ fft_pipeline/
 │       └── utils.py        # Helper functions (validation, etc.)
 ├── data/
 │   ├── inputs/
-│   │   ├── raw/               # Monthly raw Excel files (FFT_IP_V1 Aug-25.xlsx)
-│   │   ├── rolling_totals/    # Historical CSV files (rolling_totals_inpatient.csv)
-│   │   └── templates/         # Excel templates (FFT-inpatient-data-template.xlsm)
-│   └── outputs/               # Generated reports (FFT-inpatient-data-Aug-25.xlsm)
+│   │   ├── collections_overview/  # Collections metadata files
+│   │   ├── raw/                   # Monthly raw Excel files (FFT_IP_V1 Aug-25.xlsx)
+│   │   ├── suppression_files/     # VBA suppression reference files
+│   │   └── templates/             # Excel templates (FFT-inpatient-data-template.xlsm)
+│   ├── outputs/
+│   │   └── ground_truth/          # Reference validation files
+│   └── reference/                 # ICB master lists and reference data
 ```
 
 ## Data Flow
@@ -200,10 +191,6 @@ data/inputs/raw/
 ├── FFT_IP_V1 Jul-25.xlsx       # Previous month inpatient
 └── FFT_AE_V1 Aug-25.xlsx       # Current month A&E
 
-data/inputs/rolling_totals/
-├── rolling_totals_inpatient.csv
-└── rolling_totals_ambulance.csv
-
 data/inputs/templates/
 ├── FFT_IP_template.xlsm
 ├── FFT_AE_template.xlsm
@@ -212,6 +199,9 @@ data/inputs/templates/
 data/outputs/
 ├── FFT-inpatient-data-Aug-25.xlsm
 └── FFT-ambulance-data-Aug-25.xlsm
+
+data/reference/
+└── ICB_master_list.csv         # Official ICB reference data
 ```
 
 ## Testing
