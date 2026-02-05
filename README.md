@@ -99,20 +99,21 @@ fft_pipeline/
 │       │   ├── __main__.py
 │       │   └── server.py   # Main web application
 │       ├── config.py       # Centralised configuration (paths, mappings, constants)
+│       ├── __init__.py
 │       ├── loaders.py      # Data loading from Excel files
+│       ├── __main__.py     # CLI entry point
 │       ├── processors.py   # Transformation pipeline (rename, aggregate, calculate)
 │       ├── suppression.py  # Privacy suppression logic (first/second/cascade)
-│       ├── writers.py      # Excel output generation
-│       └── utils.py        # Helper functions (validation, etc.)
+│       ├── validation.py   # Ground truth comparison and output verification
+│       └── writers.py      # Excel output generation
 ├── data/
 │   ├── inputs/
 │   │   ├── collections_overview/  # Collections metadata files
 │   │   ├── raw/                   # Monthly raw Excel files (FFT_IP_V1 Aug-25.xlsx)
 │   │   ├── suppression_files/     # VBA suppression reference files
 │   │   └── templates/             # Excel templates (FFT-inpatient-data-template.xlsm)
-│   ├── outputs/
-│   │   └── ground_truth/          # Reference validation files
-│   └── reference/                 # ICB master lists and reference data
+│   └── outputs/
+│       └── ground_truth/          # Reference validation files
 ```
 
 ## Data Flow
@@ -213,9 +214,6 @@ data/inputs/templates/
 data/outputs/
 ├── FFT-inpatient-data-Aug-25.xlsm
 └── FFT-ambulance-data-Aug-25.xlsm
-
-data/reference/
-└── ICB_master_list.csv         # Official ICB reference data
 ```
 
 ## Testing
@@ -247,15 +245,6 @@ uv run python src/fft/utils.py
   - `FFT_AE_template.xlsm` ← `AE_Suppression_V3.5.xlsm`
 
 **Safe to run multiple times** - the script is idempotent and will overwrite BS sheet content to match suppression files without creating duplicates or corruption.
-
-**Example output:**
-```
-4 templates successfully updated with suppression data:
-- OP: 5,904 cells copied
-- Amb: 504 cells copied
-- IP: 288,272 cells copied
-- AE: 7,854 cells copied
-```
 
 ## Development Status
 
