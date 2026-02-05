@@ -8,9 +8,10 @@ version = "0.1.0"
 description = "FFT Response Processing ETL Pipeline"
 requires-python = ">=3.13"
 dependencies = [
-    "pandas>=2.3.3",                # Powerful data structures for data analysis, time series, and statistics 
+    "pandas>=2.3.3",                # Powerful data structures for data analysis, time series, and statistics
     "openpyxl>=3.1.5",              # A Python library to read/write Excel 2010 xlsx/xlsm files
     "python-fasthtml>=0.12.36",     # The fastest way to create an HTML app
+    "python-multipart>=0.0.22",     # Fix CVE: Path Traversal vulnerability in file uploads (0.0.20 vulnerable)
 ]
 
 [project.optional-dependencies]

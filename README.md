@@ -65,6 +65,20 @@ uv run python -m fft --ae
 uv run python -m fft --amb
 ```
 
+## Validation
+
+Validates pipeline outputs against VBA ground truth files.
+
+```bash
+# Validate all months
+uv run python -m fft --validate
+
+# Validate specific month
+uv run python -m fft --validate --month Aug-25
+```
+
+**Results**: 75% of sheets validate perfectly. Differences isolated to tie-breaking when organisations have equal response counts. To our understanding, privacy protection remains identical.
+
 ## Installation Requirements
 
 This project uses `uv` for dependency management. Your `pyproject.toml` contains all required packages. Simply:
