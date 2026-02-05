@@ -479,8 +479,9 @@ def write_england_totals(
         # Get output columns for this sheet to determine positioning
         output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
 
-        # Get data columns for England rows from configuration
-        data_columns = ENGLAND_ROWS_DATA_COLUMNS.get(sheet_name, [])
+        # Extract data columns dynamically from config (exclude geographic identifiers)
+        skip_cols = ENGLAND_ROWS_SKIP_COLUMNS.get(sheet_name, 0)
+        data_columns = output_cols[skip_cols:]
 
         # Row 12: England (including IS)
         name_col_idx = output_cols.index(sheet_config["england_label_column"]) + 1
@@ -564,7 +565,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     >>> wb['ICB'].cell(row=15, column=5).value = 0.95
     >>> format_percentage_columns(wb, 'inpatient')
     >>> wb['ICB'].cell(row=15, column=5).number_format
-    '0%'
+    '0.0000%'
 
     # Edge case: Missing sheet in workbook (should skip gracefully)
     >>> from src.fft.config import PERCENTAGE_COLUMN_CONFIG
@@ -577,7 +578,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     >>> wb['ICB'].cell(row=16, column=5).value = "text"
     >>> format_percentage_columns(wb, 'inpatient')  # Should still format other cells
     >>> wb['ICB'].cell(row=15, column=5).number_format  # Verify previous cell formatting
-    '0%'
+    '0.0000%'
 
     # Error case: Unknown service type
     >>> format_percentage_columns(wb, 'unknown')
@@ -602,7 +603,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
             for row in range(data_start_row, sheet.max_row + 1):
                 cell = sheet.cell(row=row, column=col_idx)
                 if cell.value is not None and cell.value != "*":
-                    cell.number_format = "0%"
+                    cell.number_format = "0.0000%"
 
 
 # %%
