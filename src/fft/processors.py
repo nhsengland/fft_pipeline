@@ -1,6 +1,7 @@
 """Data transformation functions."""
 
 # %% Imports
+import numpy as np
 import pandas as pd
 
 from fft.config import (
@@ -11,6 +12,7 @@ from fft.config import (
     SUMMARY_COLUMNS,
     TIME_SERIES_PREFIXES,
 )
+
 
 # %%
 def standardise_column_names(
@@ -24,12 +26,13 @@ def standardise_column_names(
         level: 'organisation', 'site', or 'ward'
 
     Returns:
-        DataFrame with standardized column names
+        DataFrame with standardised column names
 
     Raises:
         KeyError: If service_type or level is invalid
 
     >>> import pandas as pd
+    >>> import numpy as np
     >>> from fft.processors import standardise_column_names
     >>> raw_df = pd.DataFrame({
     ...     "Parent org code": [1, 2], "Parent name": ["Org A", "Org B"]
@@ -37,6 +40,24 @@ def standardise_column_names(
     >>> std_df = standardise_column_names(raw_df, "inpatient", "organisation")
     >>> list(std_df.columns)
     ['ICB_Code', 'ICB_Name']
+
+    # Test np.divide: Percentage calculation from Likert counts
+    >>> raw_df_likert = pd.DataFrame({
+    ...     "Parent org code": [1, 2, 3],
+    ...     "Parent name": ["Org A", "Org B", "Org C"],
+    ...     "Very Good": [40, 0, 10],
+    ...     "Good": [30, 0, 20],
+    ...     "Poor": [10, 0, 5],
+    ...     "Very Poor": [5, 0, 5],
+    ...     "Total Responses": [100, 0, 50],
+    ... })
+    >>> std_df_likert = standardise_column_names(
+    ...     raw_df_likert, "inpatient", "organisation"
+    ... )
+    >>> std_df_likert["Percentage_Positive"].tolist()
+    [0.7, nan, 0.6]
+    >>> std_df_likert["Percentage_Negative"].tolist()
+    [0.15, nan, 0.2]
 
     # Edge case: Non-mapped column is preserved
     >>> raw_df_extra = pd.DataFrame({
@@ -65,7 +86,37 @@ def standardise_column_names(
 
     column_map = COLUMN_MAPS[service_type][level]
 
-    return df.rename(columns=column_map)
+    df_renamed = df.rename(columns=column_map)
+
+    # Calculate Percentage_Negative from counts if not present but counts are available
+    required_neg_cols = ["Poor", "Very Poor", "Total Responses"]
+    if "Percentage_Negative" not in df_renamed.columns and all(
+        col in df_renamed.columns for col in required_neg_cols
+    ):
+        df_renamed["Percentage_Negative"] = np.divide(
+            df_renamed["Poor"] + df_renamed["Very Poor"],
+            df_renamed["Total Responses"],
+            out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
+            where=df_renamed["Total Responses"] != 0,
+        )
+
+    # Standardise missing speciality values to '-'
+    for col in ["First Speciality", "Second Speciality"]:
+        if col in df_renamed.columns:
+            df_renamed[col] = df_renamed[col].fillna("-").replace([""], "-")
+
+    # Recalculate percentages from Likert responses
+    required_pos_cols = ["Very Good", "Good", "Total Responses"]
+    if all(col in df_renamed.columns for col in required_pos_cols):
+        df_renamed["Percentage_Positive"] = np.divide(
+            df_renamed["Very Good"] + df_renamed["Good"],
+            df_renamed["Total Responses"],
+            out=np.full_like(df_renamed["Total Responses"], np.nan, dtype=float),
+            where=df_renamed["Total Responses"] != 0,
+        )
+
+    return df_renamed
+
 
 # %%
 def extract_fft_period(df: pd.DataFrame) -> str:
@@ -153,6 +204,7 @@ def extract_fft_period(df: pd.DataFrame) -> str:
 
     return f"{month_abbrev}-{year_suffix}"
 
+
 # %%
 def remove_unwanted_columns(
     df: pd.DataFrame, service_type: str, level: str
@@ -217,12 +269,12 @@ def remove_unwanted_columns(
 
     return df.drop(columns=cols_to_drop)
 
+
 # %% Aggregation
 def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFrame:
     """Aggregate data by specified grouping columns.
 
-    This is an internal function used by aggregation helpers such as
-    aggregate_to_icb, aggregate_to_trust, and aggregate_to_site.
+    This is an internal function used by aggregate_to_icb and aggregate_to_national.
 
     Args:
         df: DataFrame to aggregate
@@ -251,16 +303,23 @@ def _aggregate_by_level(df: pd.DataFrame, group_by_cols: list[str]) -> pd.DataFr
     agg_df = df.groupby(group_by_cols, as_index=False)[cols_to_sum].sum()
 
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (
-            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Positive"] = np.divide(
+            agg_df["Very Good"] + agg_df["Good"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0,
+        )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (
-            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Negative"] = np.divide(
+            agg_df["Poor"] + agg_df["Very Poor"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0,
+        )
 
     return agg_df
+
 
 def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate organisation/trust level data to ICB level.
@@ -481,16 +540,23 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     # Recalculate percentages
     if all(col in agg_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-        agg_df["Percentage_Positive"] = (
-            (agg_df["Very Good"] + agg_df["Good"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Positive"] = np.divide(
+            agg_df["Very Good"] + agg_df["Good"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0,
+        )
 
     if all(col in agg_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-        agg_df["Percentage_Negative"] = (
-            (agg_df["Poor"] + agg_df["Very Poor"]) / agg_df["Total Responses"]
-        ).round(4)
+        agg_df["Percentage_Negative"] = np.divide(
+            agg_df["Poor"] + agg_df["Very Poor"],
+            agg_df["Total Responses"],
+            out=np.full_like(agg_df["Total Responses"], np.nan, dtype=float),
+            where=agg_df["Total Responses"] != 0,
+        )
 
     return agg_df, org_counts
+
 
 # %%
 def merge_collection_modes(
@@ -534,6 +600,7 @@ def merge_collection_modes(
 
     return merged
 
+
 # %%
 def clean_icb_name(name: str) -> str:
     """Clean ICB name to match standard format.
@@ -564,6 +631,7 @@ def clean_icb_name(name: str) -> str:
     result = result.replace("INTEGRATED CARE BOARD", "ICB")
 
     return result.strip()
+
 
 # %%
 def convert_fft_period_to_datetime(fft_period: str):
@@ -597,6 +665,7 @@ def convert_fft_period_to_datetime(fft_period: str):
 
     month_num = month_map[month_abbrev]
     return pd.Timestamp(year_full, month_num, 1)
+
 
 def extract_summary_data(
     time_series_df: pd.DataFrame,
@@ -698,7 +767,7 @@ def extract_summary_data(
         """Calculate percentage from likely + extremely likely / responses."""
         if responses_val == 0:
             return 0
-        return round((likely_val + extremely_likely_val) / responses_val, 2)
+        return (likely_val + extremely_likely_val) / responses_val
 
     # Build orgs_submitting
     orgs_cols = SUMMARY_COLUMNS["orgs_submitting"]
