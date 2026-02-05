@@ -164,6 +164,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "python-fasthtml" },
+    { name = "python-multipart" },
 ]
 
 [package.optional-dependencies]
@@ -177,6 +178,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "python-fasthtml", specifier = ">=0.12.36" },
+    { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.8" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.1a32" },
 ]
