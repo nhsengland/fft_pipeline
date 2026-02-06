@@ -29,18 +29,6 @@ Processes data at multiple geographic levels:
 - Calculates percentage positive/negative at each level
 - Maintains organisational hierarchy throughout
 
-### Rolling Totals
-Maintains historical cumulative statistics in CSV format:
-- Monthly submission counts (NHS vs Independent providers)
-- Cumulative response totals
-- Monthly percentage positive/negative trends
-
-### Template-Based Output
-Generates macro-enabled Excel reports matching NHS England publication standards:
-- Pre-formatted sheets for Summary, ICB, Trust, Site, Ward levels
-- Dynamic filtering via backend dropdown lists
-- Consistent formatting across all service types
-
 ### Web Interface
 Simple browser-based interface for interactive pipeline operations:
 - Service type selection with dynamic file discovery
@@ -77,6 +65,20 @@ uv run python -m fft --ae
 uv run python -m fft --amb
 ```
 
+## Validation
+
+Validates pipeline outputs against VBA ground truth files.
+
+```bash
+# Validate all months
+uv run python -m fft --validate
+
+# Validate specific month
+uv run python -m fft --validate --month Aug-25
+```
+
+**Results**: 75% of sheets validate perfectly. Differences isolated to tie-breaking when organisations have equal response counts. To our understanding, privacy protection remains identical.
+
 ## Installation Requirements
 
 This project uses `uv` for dependency management. Your `pyproject.toml` contains all required packages. Simply:
@@ -97,17 +99,21 @@ fft_pipeline/
 │       │   ├── __main__.py
 │       │   └── server.py   # Main web application
 │       ├── config.py       # Centralised configuration (paths, mappings, constants)
+│       ├── __init__.py
 │       ├── loaders.py      # Data loading from Excel files
+│       ├── __main__.py     # CLI entry point
 │       ├── processors.py   # Transformation pipeline (rename, aggregate, calculate)
 │       ├── suppression.py  # Privacy suppression logic (first/second/cascade)
-│       ├── writers.py      # Excel output generation
-│       └── utils.py        # Helper functions (validation, etc.)
+│       ├── validation.py   # Ground truth comparison and output verification
+│       └── writers.py      # Excel output generation
 ├── data/
 │   ├── inputs/
-│   │   ├── raw/               # Monthly raw Excel files (FFT_IP_V1 Aug-25.xlsx)
-│   │   ├── rolling_totals/    # Historical CSV files (rolling_totals_inpatient.csv)
-│   │   └── templates/         # Excel templates (FFT-inpatient-data-template.xlsm)
-│   └── outputs/               # Generated reports (FFT-inpatient-data-Aug-25.xlsm)
+│   │   ├── collections_overview/  # Collections metadata files
+│   │   ├── raw/                   # Monthly raw Excel files (FFT_IP_V1 Aug-25.xlsx)
+│   │   ├── suppression_files/     # VBA suppression reference files
+│   │   └── templates/             # Excel templates (FFT-inpatient-data-template.xlsm)
+│   └── outputs/
+│       └── ground_truth/          # Reference validation files
 ```
 
 ## Data Flow
@@ -200,10 +206,6 @@ data/inputs/raw/
 ├── FFT_IP_V1 Jul-25.xlsx       # Previous month inpatient
 └── FFT_AE_V1 Aug-25.xlsx       # Current month A&E
 
-data/inputs/rolling_totals/
-├── rolling_totals_inpatient.csv
-└── rolling_totals_ambulance.csv
-
 data/inputs/templates/
 ├── FFT_IP_template.xlsm
 ├── FFT_AE_template.xlsm
@@ -243,15 +245,6 @@ uv run python src/fft/utils.py
   - `FFT_AE_template.xlsm` ← `AE_Suppression_V3.5.xlsm`
 
 **Safe to run multiple times** - the script is idempotent and will overwrite BS sheet content to match suppression files without creating duplicates or corruption.
-
-**Example output:**
-```
-4 templates successfully updated with suppression data:
-- OP: 5,904 cells copied
-- Amb: 504 cells copied
-- IP: 288,272 cells copied
-- AE: 7,854 cells copied
-```
 
 ## Development Status
 

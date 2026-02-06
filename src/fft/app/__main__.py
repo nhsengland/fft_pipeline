@@ -4,7 +4,7 @@ Run with: uv run python -m fft.app
 """
 
 if __name__ == "__main__":
-    from .server import cleanup_port_5001
+    from fft.app.server import cleanup_port_5001
 
     cleanup_port_5001()
 
