@@ -23,7 +23,7 @@ COLLECTIONS_OVERVIEW_FILE = "_FFT_CollectionOverview V1 5.xlsm"
 
 FILE_PATTERNS = {
     "inpatient": "FFT_Inpatients_V1*.xlsx",
-    "ae": "FFT_AE_V1*.xlsx",
+    "ae": "FFT_A&E_V1*.xlsx",
     "ambulance": "FFT_Ambulance_V1*.xlsx",
 }
 
@@ -143,7 +143,39 @@ COLUMN_MAPS = {
             # "Prop_Neg": "Percentage_Negative",  # Removed - input data incorrect
         },
     },
-    # Add ae, ambulance later
+    "ae": {
+        "site": {
+            "Parent org code": "ICB_Code",
+            "Parent name": "ICB_Name",
+            "Org code": "Trust_Code",
+            "Org name": "Trust_Name",
+            "Site Code": "Site_Code",
+            "Site Name MAX": "Site_Name",
+            "1 Very Good": "Very Good",
+            "2 Good": "Good",
+            "3 Neither good nor poor": "Neither Good nor Poor",
+            "4 Poor": "Poor",
+            "5 Very poor": "Very Poor",
+            "6 Dont Know": "Don't Know",
+            "Total Eligible": "Total Eligible",
+            "Prop_Pos": "Percentage_Positive",
+        },
+        "organisation": {
+            "Parent org code": "ICB_Code",
+            "Parent name": "ICB_Name",
+            "Org code": "Trust_Code",
+            "Org name": "Trust_Name",
+            "1 Very Good": "Very Good",
+            "2 Good": "Good",
+            "3 Neither good nor poor": "Neither Good nor Poor",
+            "4 Poor": "Poor",
+            "5 Very poor": "Very Poor",
+            "6 Dont Know": "Don't Know",
+            "Total Eligible": "Total Eligible",
+            "Prop_Pos": "Percentage_Positive",
+        },
+    },
+    # Add ambulance later
 }
 
 # =============================================================================
@@ -156,7 +188,11 @@ COLUMNS_TO_REMOVE = {
         "site": ["Yearnumber", "Periodname", "Title", "Response Rate"],
         "ward": ["Yearnumber", "Periodname", "Title", "Response Rate"],
     },
-    # Add ae, ambulance later
+    "ae": {
+        "organisation": ["Yearnumber", "Periodname", "Title", "Response Rate"],
+        "site": ["Yearnumber", "Periodname", "Title", "Response Rate"],
+    },
+    # Add ambulance later
 }
 
 
@@ -267,6 +303,62 @@ OUTPUT_COLUMNS = {
             "First Speciality",
             "Second Speciality",
         ],
+    },
+    "ae": {
+        "ICB": [
+            "ICB_Code",
+            "ICB_Name",
+            "Total Responses",
+            "Total Eligible",
+            "Percentage_Positive",
+            "Percentage_Negative",
+            "Very Good",
+            "Good",
+            "Neither Good nor Poor",
+            "Poor",
+            "Very Poor",
+            "Don't Know",
+        ],
+        "Trusts": [
+            "ICB_Code",
+            "Trust_Code",
+            "Trust_Name",
+            "Total Responses",
+            "Total Eligible",
+            "Percentage_Positive",
+            "Percentage_Negative",
+            "Very Good",
+            "Good",
+            "Neither Good nor Poor",
+            "Poor",
+            "Very Poor",
+            "Don't Know",
+            "Mode SMS",
+            "Mode Electronic Discharge",
+            "Mode Electronic Home",
+            "Mode Paper Discharge",
+            "Mode Paper Home",
+            "Mode Telephone",
+            "Mode Online",
+            "Mode Other",
+        ],
+        "Sites": [
+            "ICB_Code",
+            "Trust_Code",
+            "Trust_Name",
+            "Site_Code",
+            "Site_Name",
+            "Total Responses",
+            "Total Eligible",
+            "Percentage_Positive",
+            "Percentage_Negative",
+            "Very Good",
+            "Good",
+            "Neither Good nor Poor",
+            "Poor",
+            "Very Poor",
+            "Don't Know",
+        ],
     }
 }
 
@@ -364,7 +456,47 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
             },
         },
     },
-    # Add ae, ambulance later using same composable pattern
+    "ae": {
+        "template_file": "FFT_AE_template.xlsm",
+        "output_prefix": "FFT-ae-data",
+        "data_start_row": 15,
+        "england_rows": {"including_is": 12, "excluding_is": 13, "selection": 14},
+        "sheets": {
+            "icb": {
+                "sheet_name": "ICB",
+                "name_column": "ICB_Name",
+                "england_label_column": "ICB_Name",
+                "columns": [*ICB_COLS, *TOTALS_COLS, *PERCENTAGE_COLS, *LIKERT_COLS],
+            },
+            "organisation": {
+                "sheet_name": "Trusts",
+                "name_column": "Trust_Name",
+                "england_label_column": "Trust_Name",
+                "columns": [
+                    *ICB_COLS,
+                    *TRUST_COLS,
+                    *TOTALS_COLS,
+                    *PERCENTAGE_COLS,
+                    *LIKERT_COLS,
+                    *MODE_COLS,
+                ],
+            },
+            "site": {
+                "sheet_name": "Sites",
+                "name_column": "Site_Name",
+                "england_label_column": "Site_Name",
+                "columns": [
+                    *ICB_COLS,
+                    *TRUST_COLS,
+                    *SITE_COLS,
+                    *TOTALS_COLS,
+                    *PERCENTAGE_COLS,
+                    *LIKERT_COLS,
+                ],
+            },
+        },
+    },
+    # Add ambulance later using same composable pattern
 }
 
 # =============================================================================
@@ -445,6 +577,27 @@ BS_SHEET_CONFIG: dict[str, BSSheetServiceConfig] = {
                 ],
             },
         },
+    },
+    "ae": {
+        "reference_list_start_col": 21,  # Column U
+        "reference_list_start_row": 2,
+        "reference_columns": [
+            "ICB_Code",
+            "Trust_Code",
+            "Trust_Name",
+            "Site_Code",
+            "Site_Name",
+        ],
+        "linked_lists": {
+            "trusts": {
+                "start_col": 31,  # AE
+                "pairs": [["Trust_Code", "Trust_Name"]],
+            },
+            "sites": {
+                "start_col": 34,  # AH
+                "pairs": [["Trust_Code", "Trust_Name"], ["Site_Code", "Site_Name"]],
+            },
+        },
     }
 }
 
@@ -498,6 +651,11 @@ PERCENTAGE_COLUMN_CONFIG: dict[str, dict[str, list[int]]] = {
         "Trusts": [6, 7],  # Columns F, G
         "Sites": [8, 9],  # Columns H, I
         "Wards": [9, 10],  # Columns I, J
+    },
+    "ae": {
+        "ICB": [5, 6],  # Columns E, F (Percentage Positive, Percentage Negative)
+        "Trusts": [6, 7],  # Columns F, G
+        "Sites": [8, 9],  # Columns H, I
     }
 }
 

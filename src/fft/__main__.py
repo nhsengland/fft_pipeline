@@ -370,24 +370,29 @@ def _validate_output(output_path: Path, service_type: str) -> None:
         sheets_to_check = VALIDATION_CONFIG.get(service_type, [])
 
         for sheet_name in sheets_to_check:
+            # Map sheet names for ground truth (A&E has prefixes)
+            ground_truth_sheet = f"AE {sheet_name}" if service_type == "ae" else sheet_name
+
             # Use key-based comparison for sheets with configured key columns
             if sheet_name in VALIDATION_KEY_COLUMNS:
                 result = compare_data_by_key(
                     expected_path=ground_truth_path,
                     actual_path=output_path,
-                    sheet_name=sheet_name,
+                    sheet_name=ground_truth_sheet,
                     key_column=VALIDATION_KEY_COLUMNS[sheet_name],
                     start_row=15,
                     data_only=True,
+                    actual_sheet_name=sheet_name,
                 )
             else:
                 # Use row-based comparison for other sheets
                 result = compare_data_range(
                     expected_path=ground_truth_path,
                     actual_path=output_path,
-                    sheet_name=sheet_name,
+                    sheet_name=ground_truth_sheet,
                     start_row=15,
                     data_only=True,
+                    actual_sheet_name=sheet_name,
                 )
             results.append(result)
 

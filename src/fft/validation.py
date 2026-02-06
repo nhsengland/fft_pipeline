@@ -220,6 +220,7 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
     key_column: str | list[str] = "B",  # Single column or composite key columns
     start_row: int = 15,
     data_only: bool = True,
+    actual_sheet_name: str | None = None,
 ) -> SheetResult:
     """Compare sheet data by matching records via key column(s) rather than row position.
 
@@ -248,18 +249,20 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
     wb_expected = load_workbook(expected_path, data_only=data_only)
     wb_actual = load_workbook(actual_path, data_only=data_only)
 
+    actual_sheet = actual_sheet_name or sheet_name
+
     if sheet_name not in wb_expected.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": True,
             "missing_in_actual": False,
         }
 
-    if sheet_name not in wb_actual.sheetnames:
+    if actual_sheet not in wb_actual.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": False,
@@ -267,16 +270,16 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
         }
 
     ws_expected = wb_expected[sheet_name]
-    ws_actual = wb_actual[sheet_name]
+    ws_actual = wb_actual[actual_sheet]
 
     # Build dictionaries mapping key -> row data
     expected_records = _extract_records_by_key(ws_expected, key_column, start_row)
     actual_records = _extract_records_by_key(ws_actual, key_column, start_row)
 
-    differences = _compare_records_by_key(sheet_name, expected_records, actual_records)
+    differences = _compare_records_by_key(actual_sheet, expected_records, actual_records)
 
     return {
-        "name": sheet_name,
+        "name": actual_sheet,
         "identical": len(differences) == 0,
         "differences": differences,
         "missing_in_expected": False,
@@ -373,6 +376,7 @@ def compare_data_range(
     sheet_name: str,
     start_row: int = 15,
     data_only: bool = True,
+    actual_sheet_name: str | None = None,
 ) -> SheetResult:
     """Compare only the data range of a sheet, ignoring template/control areas.
 
@@ -398,18 +402,20 @@ def compare_data_range(
     wb_expected = load_workbook(expected_path, data_only=data_only)
     wb_actual = load_workbook(actual_path, data_only=data_only)
 
+    actual_sheet = actual_sheet_name or sheet_name
+
     if sheet_name not in wb_expected.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": True,
             "missing_in_actual": False,
         }
 
-    if sheet_name not in wb_actual.sheetnames:
+    if actual_sheet not in wb_actual.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": False,
@@ -417,15 +423,15 @@ def compare_data_range(
         }
 
     ws_expected = wb_expected[sheet_name]
-    ws_actual = wb_actual[sheet_name]
+    ws_actual = wb_actual[actual_sheet]
 
     # Compare only from start_row onwards
     differences = _find_cell_differences_range(
-        sheet_name, ws_expected, ws_actual, start_row
+        actual_sheet, ws_expected, ws_actual, start_row
     )
 
     return {
-        "name": sheet_name,
+        "name": actual_sheet,
         "identical": len(differences) == 0,
         "differences": differences,
         "missing_in_expected": False,
@@ -700,7 +706,7 @@ def extract_service_type(filename: str) -> str | None:
         return "inpatient"
 
     # Check for A&E patterns
-    if any(pattern in filename_lower for pattern in ["_ae_", "fft_ae"]):
+    if any(pattern in filename_lower for pattern in ["_ae_", "fft_ae", "-ae-"]):
         return "ae"
 
     # Check for ambulance patterns
