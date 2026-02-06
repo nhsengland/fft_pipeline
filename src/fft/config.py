@@ -108,7 +108,7 @@ COLUMN_MAPS = {
             "Spec 1": "First Speciality",
             "Spec 2": "Second Speciality",
             "Prop_Pos": "Percentage_Positive",
-            "Prop_Neg": "Percentage_Negative",
+            # "Prop_Neg": "Percentage_Negative",  # Removed - input data incorrect
         },
         "site": {
             "Parent org code": "ICB_Code",
@@ -125,7 +125,7 @@ COLUMN_MAPS = {
             "6 Dont Know SUM": "Don't Know",
             "Total Eligible SUM": "Total Eligible",
             "Prop_Pos": "Percentage_Positive",
-            "Prop_Neg": "Percentage_Negative",
+            # "Prop_Neg": "Percentage_Negative",  # Removed - input data incorrect
         },
         "organisation": {
             "Parent org code": "ICB_Code",
@@ -140,7 +140,7 @@ COLUMN_MAPS = {
             "6 Dont Know SUM": "Don't Know",
             "Total Eligible SUM": "Total Eligible",
             "Prop_Pos": "Percentage_Positive",
-            "Prop_Neg": "Percentage_Negative",
+            # "Prop_Neg": "Percentage_Negative",  # Removed - input data incorrect
         },
     },
     # Add ae, ambulance later
@@ -366,6 +366,31 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
     },
     # Add ae, ambulance later using same composable pattern
 }
+
+# =============================================================================
+# VALIDATION CONFIGURATION
+# =============================================================================
+
+# Sheets to validate for each service type (derived from template config)
+VALIDATION_CONFIG: dict[str, list[str]] = {
+    service_type: [
+        sheet_config["sheet_name"] for sheet_config in template_config["sheets"].values()
+    ]
+    for service_type, template_config in TEMPLATE_CONFIG.items()
+}
+
+# Key columns for record matching during validation (Excel column letters)
+# Single column (str) or composite key (list of str) for unique identification
+VALIDATION_KEY_COLUMNS: dict[str, str | list[str]] = {
+    "ICB": "B",  # ICB_Code
+    "Trusts": "B",  # Trust_Code
+    "Sites": "D",  # Site_Code
+    "Wards": ["B", "D", "F"],  # Trust_Code + Site_Code + Ward_Name (composite key)
+}
+
+# Tolerance for floating point comparisons during validation
+VALIDATION_TOLERANCE: float = 1e-5
+
 
 # =============================================================================
 # BS SHEET CONFIGURATION
