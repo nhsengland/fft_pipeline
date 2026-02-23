@@ -540,22 +540,6 @@ def _get_data_from_level(
 
     return total_row, nhs_row
 
-    # Select count columns
-    count_cols = _get_count_columns(level_df)
-    available_count_cols = [col for col in count_cols if col in level_df.columns]
-
-    # Calculate totals
-    nhs_totals = nhs_df[available_count_cols].sum()
-    all_totals = level_df[available_count_cols].sum()
-
-    # Create DataFrames
-    total_row = pd.DataFrame([all_totals], index=[0])
-    nhs_row = pd.DataFrame([nhs_totals], index=[0])
-
-    # Recalculate percentages
-    _recalculate_percentages(total_row)
-    _recalculate_percentages(nhs_row)
-
     return total_row, nhs_row
 
 
