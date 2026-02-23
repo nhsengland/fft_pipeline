@@ -691,12 +691,7 @@ def _write_selection_row(
 
     # Cache formula results for validation
     # This ensures formulas work correctly when workbook is read with data_only=True
-    _cache_england_totals_formula_results(sheet, england_rows["selection"])
-
-    # Cache formula results for validation
-    # This mimics Excel's behavior of caching calculated values
-    # so they can be read with data_only=True
-    _cache_england_totals_formula_results(sheet, england_rows["selection"])
+    _cache_all_formula_results(sheet.parent)
 
 
 # %%
@@ -947,67 +942,6 @@ def _evaluate_sum_range(sheet, range_expr: str):
     return total
 
 
-def _cache_england_totals_formula_results(sheet, selection_row: int) -> None:
-    """Legacy function - kept for backward compatibility.
-
-    Use _cache_all_formula_results(workbook) instead for comprehensive caching.
-    """
-    # Calculate SUBTOTAL formulas manually and store results in sheet metadata
-    cached_results = {}
-
-    for col in range(1, sheet.max_column + 1):
-        cell = sheet.cell(row=selection_row, column=col)
-
-        # Only process cells with SUBTOTAL formulas
-        if (
-            cell.data_type == "f"
-            and isinstance(cell.value, str)
-            and "SUBTOTAL(9," in cell.value
-        ):
-            # Extract range from formula like "=SUBTOTAL(9,D7:D999)"
-            try:
-                formula = cell.value
-                range_part = formula.split("SUBTOTAL(9,")[1].split(")")[0]
-                col_letter = range_part.split(":")[0][0]  # 'D' from 'D7:D999'
-                start_row = int(range_part.split(":")[0][1:])  # 7 from 'D7:D999'
-                end_row = int(range_part.split(":")[1][1:])  # 999 from 'D7:D999'
-
-                col_idx = ord(col_letter) - ord("A") + 1
-
-                # Calculate the sum (SUBTOTAL(9,...) sums visible cells)
-                total = 0
-                for row in range(start_row, end_row + 1):
-                    data_cell = sheet.cell(row=row, column=col_idx)
-                    if data_cell.value and isinstance(data_cell.value, (int, float)):
-                        # Only sum if row is not hidden (SUBTOTAL behavior)
-                        if not sheet.row_dimensions[row].hidden:
-                            total += data_cell.value
-
-                # Store the calculated result
-                if total > 0:
-                    cached_results[cell.coordinate] = total
-
-            except (IndexError, ValueError, AttributeError):
-                # If formula parsing fails, skip this cell
-                pass
-
-    # Store cached results in sheet metadata
-    if cached_results:
-        if not hasattr(sheet, "_fft_cached_formulas"):
-            sheet._fft_cached_formulas = {}
-        sheet._fft_cached_formulas[selection_row] = cached_results
-
-        # Selection row: PRESERVE EXISTING FORMULAS - don't overwrite cells with formulas
-        # The template has formulas like =SUBTOTAL(9,C15:C57) that should be preserved
-        for col_name in data_columns:
-            if col_name in output_cols and col_name in total_row.columns:
-                col_idx = output_cols.index(col_name) + 1
-                cell = sheet.cell(row=england_rows["selection"], column=col_idx)
-
-                # Only write if cell doesn't already contain a formula
-                if not _has_formula(cell):
-                    cell.value = total_row[col_name].values[0]
-                # If it has a formula, preserve it (formulas will auto-calculate from data)
 
 
 # %%
