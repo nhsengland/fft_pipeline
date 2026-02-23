@@ -15,6 +15,7 @@ from fft.config import (
     HEADER_VALIDATION_EXCLUDED_SHEETS,
     VALIDATION_TOLERANCE,
 )
+from fft.writers import get_cached_formula_results
 
 # Type for Excel cell values from openpyxl
 CellValue = str | int | float | bool | datetime | None
@@ -37,6 +38,106 @@ class SheetResult(TypedDict):
     differences: list[CellDifference]
     missing_in_actual: bool
     missing_in_expected: bool
+
+
+def compare_in_memory_cached_formulas(
+    wb_expected, wb_actual, sheets_to_compare: list[str] | None = None
+) -> list[SheetResult]:
+    """Compare in-memory cached formula results between two loaded workbooks.
+
+    This function compares workbooks that have cached formula results in memory
+    (before they've been saved to disk). Use this for immediate validation
+    during processing when workbooks have active _fft_cached_formulas attributes.
+
+    Args:
+        wb_expected: Loaded expected workbook with in-memory cache
+        wb_actual: Loaded actual workbook with in-memory cache
+        sheets_to_compare: List of sheet names to compare (None = all common sheets)
+
+    Returns:
+        List of SheetResult dicts, one per sheet compared
+    """
+    if sheets_to_compare is None:
+        sheets_to_compare = list(set(wb_expected.sheetnames) | set(wb_actual.sheetnames))
+
+    results = []
+    for sheet_name in sheets_to_compare:
+        if sheet_name not in wb_expected.sheetnames or sheet_name not in wb_actual.sheetnames:
+            continue
+
+        ws_expected = wb_expected[sheet_name]
+        ws_actual = wb_actual[sheet_name]
+
+        expected_cache = get_cached_formula_results(ws_expected)
+        actual_cache = get_cached_formula_results(ws_actual)
+
+        differences = []
+        all_formula_coords = set(expected_cache.keys()) | set(actual_cache.keys())
+
+        for coord in all_formula_coords:
+            expected_val = expected_cache.get(coord)
+            actual_val = actual_cache.get(coord)
+
+            if not _values_are_equivalent(expected_val, actual_val):
+                differences.append({
+                    "sheet": sheet_name,
+                    "cell": coord,
+                    "expected": expected_val,
+                    "actual": actual_val,
+                })
+
+        results.append({
+            "name": sheet_name,
+            "identical": len(differences) == 0,
+            "differences": differences,
+            "missing_in_expected": False,
+            "missing_in_actual": False,
+        })
+
+    return results
+
+
+def compare_formula_results(
+    expected_path: Path | str,
+    actual_path: Path | str,
+    sheets_to_compare: list[str] | None = None,
+) -> list[SheetResult]:
+    """Compare formula calculation results between two workbooks.
+
+    Uses Excel's native formula value caching (data_only=True) to compare
+    the actual calculated results of formulas, ensuring validation compares
+    the exact computed values rather than formula text.
+
+    Args:
+        expected_path: Path to the ground truth workbook
+        actual_path: Path to the workbook to validate
+        sheets_to_compare: List of sheet names to compare (None = all common sheets)
+
+    Returns:
+        List of SheetResult dicts, one per sheet compared
+
+    Raises:
+        FileNotFoundError: If either workbook doesn't exist
+    """
+    expected_path = Path(expected_path)
+    actual_path = Path(actual_path)
+
+    if not expected_path.exists():
+        raise FileNotFoundError(f"Expected workbook not found: {expected_path}")
+    if not actual_path.exists():
+        raise FileNotFoundError(f"Actual workbook not found: {actual_path}")
+
+    # Load with data_only=True to get Excel's cached calculated values
+    wb_expected = load_workbook(expected_path, data_only=True)
+    wb_actual = load_workbook(actual_path, data_only=True)
+
+    if sheets_to_compare is None:
+        sheets_to_compare = list(set(wb_expected.sheetnames) | set(wb_actual.sheetnames))
+
+    return [
+        _compare_sheet_formula_values(sheet_name, wb_expected, wb_actual)
+        for sheet_name in sheets_to_compare
+    ]
 
 
 def compare_workbooks(
@@ -156,6 +257,63 @@ def compare_workbooks(
         _compare_sheet(sheet_name, wb_expected, wb_actual)
         for sheet_name in sheets_to_compare
     ]
+
+
+def _compare_sheet_formula_values(sheet_name: str, wb_expected, wb_actual) -> SheetResult:
+    """Compare formula calculated values between two sheets using data_only=True loads."""
+    if sheet_name not in wb_expected.sheetnames:
+        return {
+            "name": sheet_name,
+            "identical": False,
+            "differences": [],
+            "missing_in_expected": True,
+            "missing_in_actual": False,
+        }
+
+    if sheet_name not in wb_actual.sheetnames:
+        return {
+            "name": sheet_name,
+            "identical": False,
+            "differences": [],
+            "missing_in_expected": False,
+            "missing_in_actual": True,
+        }
+
+    ws_expected = wb_expected[sheet_name]
+    ws_actual = wb_actual[sheet_name]
+
+    # Compare only cells that contain calculated formula results
+    differences = []
+
+    # Check for formula cells by looking at both sheets
+    max_row = max(ws_expected.max_row or 1, ws_actual.max_row or 1)
+    max_col = max(ws_expected.max_column or 1, ws_actual.max_column or 1)
+
+    for row in range(1, max_row + 1):
+        for col in range(1, max_col + 1):
+            expected_cell = ws_expected.cell(row=row, column=col)
+            actual_cell = ws_actual.cell(row=row, column=col)
+
+            expected_val = expected_cell.value
+            actual_val = actual_cell.value
+
+            # Focus on cells that likely contained formulas (numeric results)
+            if (isinstance(expected_val, (int, float)) or isinstance(actual_val, (int, float))):
+                if not _values_are_equivalent(expected_val, actual_val):
+                    differences.append({
+                        "sheet": sheet_name,
+                        "cell": expected_cell.coordinate,
+                        "expected": expected_val,
+                        "actual": actual_val,
+                    })
+
+    return {
+        "name": sheet_name,
+        "identical": len(differences) == 0,
+        "differences": differences,
+        "missing_in_expected": False,
+        "missing_in_actual": False,
+    }
 
 
 def _compare_sheet(sheet_name: str, wb_expected, wb_actual) -> SheetResult:
@@ -730,13 +888,12 @@ def _validate_header_files(
 
 
 def _calculate_formula_value(cell, sheet) -> str | int | float | None:
-    """Calculate the value of a formula cell.
+    """Calculate the value of a formula cell using cached results when available.
 
     Args:
         cell: Openpyxl cell object containing a formula
         sheet: Openpyxl worksheet object
 
-    Returns:
     Returns:
         The calculated value of the formula, or None if calculation fails
 
@@ -744,6 +901,12 @@ def _calculate_formula_value(cell, sheet) -> str | int | float | None:
     if not cell.data_type == "f" or not isinstance(cell.value, str):
         return cell.value
 
+    # First, try to get cached result
+    cached_results = get_cached_formula_results(sheet, row=cell.row)
+    if cached_results and cell.coordinate in cached_results:
+        return cached_results[cell.coordinate]
+
+    # Fallback to calculation if no cache available
     formula = cell.value
 
     # Handle SUBTOTAL(9,range) - sum of visible cells

@@ -716,23 +716,257 @@ def _write_selection_row(
 
 
 # %%
-def _cache_england_totals_formula_results(sheet, selection_row: int) -> None:
-    """Cache formula results for England totals rows to enable data_only validation.
-
-    When Excel saves a workbook, it caches the calculated formula results in the file.
-    When you open it with data_only=True, openpyxl reads these cached values.
-    When openpyxl saves a workbook, it does NOT cache the formula results.
-    This function manually calculates and caches those results.
+def get_cached_formula_results(sheet, row: int = None) -> dict:
+    """Retrieve cached formula results from sheet metadata.
 
     Args:
         sheet: Openpyxl worksheet object
-        selection_row: Row number of the Selection row (e.g., 6 for AE, 14 for IP)
+        row: Optional row number to filter results. If None, returns all cached results.
+
+    Returns:
+        Dict with cell coordinates as keys and calculated values as values.
+        If row specified, returns only results for that row.
+        If no cached results exist, returns empty dict.
+    """
+    if not hasattr(sheet, "_fft_cached_formulas"):
+        return {}
+
+    if row is None:
+        # Return all cached results flattened
+        all_results = {}
+        for row_results in sheet._fft_cached_formulas.values():
+            all_results.update(row_results)
+        return all_results
+
+    return sheet._fft_cached_formulas.get(row, {})
+
+
+def _cache_all_formula_results(workbook: Workbook) -> None:
+    """Cache all formula results in the workbook for validation.
+
+    Calculates and caches results for all formulas across all sheets.
+    Handles SUBTOTAL and IFERROR formula types commonly used in FFT templates.
+    Processes formulas in dependency order: SUBTOTAL first, then IFERROR.
+
+    Args:
+        workbook: Openpyxl Workbook object
 
     Note:
-        This function does NOT modify cell._value directly as that corrupts the
-        cell structure.
-        Instead, it creates a separate cache that can be used for validation.
+        Results are stored in sheet._fft_cached_formulas[row][coordinate] format.
+    """
+    for sheet in workbook.worksheets:
+        sheet._fft_cached_formulas = {}
 
+        # Collect all formula cells, grouped by type and row
+        formula_cells_by_row = {}
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.data_type == "f" and isinstance(cell.value, str):
+                    row_num = cell.row
+                    if row_num not in formula_cells_by_row:
+                        formula_cells_by_row[row_num] = []
+                    formula_cells_by_row[row_num].append(cell)
+
+        # Process each row
+        for row_num in sorted(formula_cells_by_row.keys()):
+            cells = formula_cells_by_row[row_num]
+            row_cache = {}
+
+            # First pass: Calculate SUBTOTAL formulas (no dependencies)
+            for cell in cells:
+                if "SUBTOTAL(" in cell.value:
+                    try:
+                        result = _calculate_formula_result(sheet, cell)
+                        if result is not None:
+                            row_cache[cell.coordinate] = result
+                    except (IndexError, ValueError, AttributeError, ZeroDivisionError):
+                        pass
+
+            # Update sheet cache after first pass so IFERROR formulas can use results
+            if row_cache:
+                sheet._fft_cached_formulas[row_num] = row_cache
+
+            # Second pass: Calculate IFERROR formulas (may depend on SUBTOTAL results)
+            for cell in cells:
+                if "IFERROR(" in cell.value and cell.coordinate not in row_cache:
+                    try:
+                        result = _calculate_formula_result(sheet, cell)
+                        if result is not None:
+                            row_cache[cell.coordinate] = result
+                    except (IndexError, ValueError, AttributeError, ZeroDivisionError):
+                        pass
+
+            # Update final cache
+            if row_cache:
+                sheet._fft_cached_formulas[row_num] = row_cache
+
+
+def _calculate_formula_result(sheet, cell):
+    """Calculate result for a single formula cell.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        cell: Cell containing formula
+
+    Returns:
+        Calculated result or None if calculation fails
+    """
+    formula = cell.value
+
+    # Handle SUBTOTAL(9,range) formulas
+    if "SUBTOTAL(9," in formula:
+        return _calculate_subtotal_formula(sheet, formula)
+
+    # Handle IFERROR formulas
+    if formula.startswith("=IFERROR("):
+        return _calculate_iferror_formula(sheet, cell, formula)
+
+    return None
+
+
+def _calculate_subtotal_formula(sheet, formula: str):
+    """Calculate SUBTOTAL(9,range) formula result."""
+    range_part = formula.split("SUBTOTAL(9,")[1].split(")")[0]
+    col_letter = range_part.split(":")[0][0]
+    start_row = int(range_part.split(":")[0][1:])
+    end_row = int(range_part.split(":")[1][1:])
+
+    col_idx = ord(col_letter) - ord("A") + 1
+
+    total = 0
+    for row in range(start_row, end_row + 1):
+        data_cell = sheet.cell(row=row, column=col_idx)
+        if data_cell.value and isinstance(data_cell.value, (int, float)):
+            if not sheet.row_dimensions[row].hidden:
+                total += data_cell.value
+
+    return total if total > 0 else 0
+
+
+def _calculate_iferror_formula(sheet, cell, formula: str):
+    """Calculate IFERROR formula result."""
+    # Extract the main expression from IFERROR(expression, fallback)
+    inner_expr = formula[9:-1]  # Remove "=IFERROR(" and ")"
+
+    # Find the comma that separates expression from fallback
+    # Need to handle nested parentheses and functions
+    paren_count = 0
+    split_pos = -1
+    for i, char in enumerate(inner_expr):
+        if char == '(':
+            paren_count += 1
+        elif char == ')':
+            paren_count -= 1
+        elif char == ',' and paren_count == 0:
+            split_pos = i
+            break
+
+    if split_pos == -1:
+        return None
+
+    main_expr = inner_expr[:split_pos].strip()
+    fallback = inner_expr[split_pos+1:].strip().replace('"', '')
+
+    try:
+        # Handle division expressions like (G14+H14)/SUM(G14:L14)
+        if "/" in main_expr:
+            div_pos = main_expr.rfind('/')  # Find last division operator
+            numerator_part = main_expr[:div_pos].strip()
+            denominator_part = main_expr[div_pos+1:].strip()
+
+            # Calculate numerator and denominator
+            numerator = _evaluate_expression(sheet, numerator_part)
+            denominator = _evaluate_expression(sheet, denominator_part)
+
+            if denominator == 0 or denominator is None:
+                return fallback
+
+            result = numerator / denominator
+            return round(result, 4)  # Match Excel precision
+
+    except (ValueError, ZeroDivisionError, TypeError):
+        return fallback
+
+    return fallback
+
+
+def _evaluate_expression(sheet, expression: str):
+    """Evaluate complex expressions including cell references, additions, and functions."""
+    expression = expression.strip()
+
+    # Handle parentheses by removing outer ones if they enclose the entire expression
+    if expression.startswith("(") and expression.endswith(")"):
+        paren_count = 0
+        for i, char in enumerate(expression):
+            if char == '(':
+                paren_count += 1
+            elif char == ')':
+                paren_count -= 1
+                if paren_count == 0 and i == len(expression) - 1:
+                    # Outer parentheses enclose entire expression
+                    expression = expression[1:-1]
+                    break
+
+    # Handle SUM function calls like SUM(G14:L14)
+    if expression.startswith("SUM(") and expression.endswith(")"):
+        range_part = expression[4:-1]  # Extract G14:L14
+        return _evaluate_sum_range(sheet, range_part)
+
+    # Handle addition expressions like G14+H14
+    if "+" in expression:
+        parts = [part.strip() for part in expression.split("+")]
+        total = 0
+        for part in parts:
+            value = _get_cell_value(sheet, part)
+            if isinstance(value, (int, float)):
+                total += value
+        return total
+
+    # Single cell reference
+    return _get_cell_value(sheet, expression)
+
+
+def _get_cell_value(sheet, cell_ref: str):
+    """Get the actual value from a cell, handling formulas by using cached results."""
+    cell_ref = cell_ref.strip()
+    cell = sheet[cell_ref]
+
+    # If cell contains a formula, try to get cached result first
+    if cell.data_type == "f" and hasattr(sheet, "_fft_cached_formulas"):
+        for row_cache in sheet._fft_cached_formulas.values():
+            if cell_ref in row_cache:
+                return row_cache[cell_ref]
+
+    # Otherwise return the raw value
+    value = cell.value
+    return value if isinstance(value, (int, float)) else 0
+
+
+def _evaluate_sum_range(sheet, range_expr: str):
+    """Evaluate SUM range like G14:L14."""
+    if ":" not in range_expr:
+        # Single cell
+        return _get_cell_value(sheet, range_expr)
+
+    start_ref, end_ref = range_expr.split(":")
+    start_cell = sheet[start_ref]
+    end_cell = sheet[end_ref]
+
+    total = 0
+    for row in range(start_cell.row, end_cell.row + 1):
+        for col in range(start_cell.column, end_cell.column + 1):
+            cell = sheet.cell(row=row, column=col)
+            value = _get_cell_value(sheet, cell.coordinate)
+            if isinstance(value, (int, float)):
+                total += value
+
+    return total
+
+
+def _cache_england_totals_formula_results(sheet, selection_row: int) -> None:
+    """Legacy function - kept for backward compatibility.
+
+    Use _cache_all_formula_results(workbook) instead for comprehensive caching.
     """
     # Calculate SUBTOTAL formulas manually and store results in sheet metadata
     cached_results = {}
@@ -847,6 +1081,8 @@ def save_output(workbook: Workbook, service_type: str, fft_period: str) -> Path:
     Saves as macro-enabled workbook (.xlsm) with naming pattern:
     FFT-{service}-data-{period}.xlsm (e.g., FFT-inpatient-data-Aug-24.xlsm)
 
+    Caches all formula results before saving for validation purposes.
+
     Args:
         workbook: Openpyxl Workbook object to save
         service_type: 'inpatient', 'ae', or 'ambulance'
@@ -912,6 +1148,9 @@ def save_output(workbook: Workbook, service_type: str, fft_period: str) -> Path:
 
     # Ensure outputs directory exists
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Cache all formula results for validation
+    _cache_all_formula_results(workbook)
 
     workbook.save(output_path)
 
