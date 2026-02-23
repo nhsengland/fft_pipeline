@@ -73,6 +73,7 @@ def load_raw_data(file_path: Path) -> dict[str, pd.DataFrame]:
         for sheet in excel_file.sheet_names
     }
 
+
 # %%
 def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     """Find the n most recent raw data files for the given service type.
@@ -103,7 +104,7 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     True
 
     # Edge case: No files found for service type
-    >>> files = find_latest_files("ae", n=2)
+    >>> files = find_latest_files("ambulance", n=2)
     >>> files == []
     True
 

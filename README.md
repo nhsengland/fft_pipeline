@@ -12,7 +12,7 @@ The Friends and Family Test (FFT) is the UK's largest patient feedback programme
 
 Supports multiple service types:
 - **Inpatient services** (Ward → Site → Trust → ICB)
-- **A&E services** (Site → Trust → ICB) _coming soon_
+- **A&E services** (Site → Trust → ICB)
 - **Ambulance services** (Trust → ICB) _coming soon_
 
 ## Key Features
@@ -70,11 +70,14 @@ uv run python -m fft --amb
 Validates pipeline outputs against VBA ground truth files.
 
 ```bash
-# Validate all months
+# Validate all service types and months
 uv run python -m fft --validate
 
 # Validate specific month
 uv run python -m fft --validate --month Aug-25
+
+# Validate specific service type
+uv run python -m fft --ae --validate --month Jul-25
 ```
 
 **Results**: 75% of sheets validate perfectly. Differences isolated to tie-breaking when organisations have equal response counts. To our understanding, privacy protection remains identical.
@@ -248,9 +251,9 @@ uv run python src/fft/utils.py
 
 ## Development Status
 
-**Current**: Inpatient pipeline (Ward → Site → Trust → ICB)  
-**Next**: A&E pipeline (Site → Trust → ICB)  
-**Future**: Ambulance pipeline (Trust → ICB)
+**Complete**: Inpatient pipeline (Ward → Site → Trust → ICB)
+**Complete**: A&E pipeline (Site → Trust → ICB)
+**Next**: Ambulance pipeline (Trust → ICB)
 
 ---
 

@@ -9,7 +9,6 @@ from openpyxl.workbook import Workbook
 
 from fft.config import (
     BS_SHEET_CONFIG,
-    ENGLAND_ROWS_DATA_COLUMNS,
     ENGLAND_ROWS_SKIP_COLUMNS,
     ENGLAND_TOTALS_DATA_SOURCE,
     IS1_CODE,
@@ -18,8 +17,10 @@ from fft.config import (
     PERCENTAGE_COLUMN_CONFIG,
     PERIOD_LABEL_CONFIG,
     SPECIALITY_COLS,
+    SUMMARY_SHEET_CONFIG,
     TEMPLATE_CONFIG,
     TEMPLATES_DIR,
+    get_count_columns_for_service,
 )
 from fft.loaders import load_collections_overview
 from fft.processors import extract_summary_data
@@ -84,10 +85,11 @@ def _has_formula(cell) -> bool:
 
     Returns:
         bool: True if cell contains a formula, False otherwise
+
     """
     if cell.value is None:
         return False
-    return isinstance(cell.value, str) and cell.value.startswith('=')
+    return isinstance(cell.value, str) and cell.value.startswith("=")
 
 
 def write_dataframe_to_sheet(
@@ -147,11 +149,10 @@ def write_dataframe_to_sheet(
     sheet = workbook[sheet_name]
 
     for row_idx, row in enumerate(df.itertuples(index=False), start=start_row):
-        for col_idx, value in enumerate(row, start=start_col):
+        for col_idx, cell_value in enumerate(row, start=start_col):
             # Convert NaN values to dashes to match VBA behaviour
-            if pd.isna(value):
-                value = '-'
-            sheet.cell(row=row_idx, column=col_idx).value = value
+            display_value = "-" if pd.isna(cell_value) else cell_value
+            sheet.cell(row=row_idx, column=col_idx).value = display_value
 
 
 # %%
@@ -356,7 +357,11 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
 
 # %%
 def write_england_totals(
-    workbook: Workbook, service_type: str, national_df: pd.DataFrame, org_counts: dict, suppressed_data: dict = None, all_level_data: dict = None
+    workbook: Workbook,
+    service_type: str,
+    national_df: pd.DataFrame,
+    org_counts: dict,
+    data_options: dict = None,
 ) -> None:
     """Write England-level totals to rows 12-14 of output sheets.
 
@@ -370,6 +375,7 @@ def write_england_totals(
         service_type: 'inpatient', 'ae', or 'ambulance'
         national_df: DataFrame from aggregate_to_national() with Total/NHS/IS1 rows
         org_counts: Dict with 'total_count', 'nhs_count', 'is1_count'
+        data_options: Optional dict with 'suppressed_data' and 'all_level_data' keys
 
     Returns:
         None (modifies workbook in place)
@@ -408,142 +414,370 @@ def write_england_totals(
     KeyError: "'Submitter_Type' column not found in national_df"
 
     """
-    if service_type not in TEMPLATE_CONFIG:
-        raise KeyError(f"Unknown service type: '{service_type}'")
+    # Extract data options with defaults
+    data_options = data_options or {}
+    all_level_data = data_options.get("all_level_data")
 
-    if "Submitter_Type" not in national_df.columns:
-        raise KeyError("'Submitter_Type' column not found in national_df")
+    _validate_england_totals_inputs(service_type, national_df)
 
     config = TEMPLATE_CONFIG[service_type]
     england_rows = config["england_rows"]
 
-    # Write to each sheet (ICB, Trusts, Sites, Wards)
+    # Process each sheet
     for level, sheet_config in config["sheets"].items():
         sheet_name = sheet_config["sheet_name"]
 
         if sheet_name not in workbook.sheetnames:
             continue
 
-        sheet = workbook[sheet_name]
+        config = {
+            "sheet_config": sheet_config,
+            "service_type": service_type,
+            "england_rows": england_rows,
+        }
+        options = {"all_level_data": all_level_data}
+        _process_single_sheet(workbook, sheet_name, config, national_df, options)
 
-        # Determine appropriate data source for this sheet using VBA-aligned approach
-        data_source_level = ENGLAND_TOTALS_DATA_SOURCE.get(sheet_name)
 
-        # Use sheet-appropriate data if available, fallback to national_df
-        if all_level_data and data_source_level and data_source_level in all_level_data:
-            # Aggregate from the appropriate level (ward/site/organisation)
-            level_df = all_level_data[data_source_level]
+def _validate_england_totals_inputs(service_type: str, national_df: pd.DataFrame) -> None:
+    """Validate inputs for England totals writing."""
+    if service_type not in TEMPLATE_CONFIG:
+        raise KeyError(f"Unknown service type: '{service_type}'")
 
-            # Calculate totals excluding IS1 (NHS only) - filter by ICB_Code != IS1
-            if "ICB_Code" in level_df.columns:
-                nhs_df = level_df[level_df["ICB_Code"] != IS1_CODE]
-            else:
-                nhs_df = level_df  # If no ICB_Code column, assume all NHS
+    if "Submitter_Type" not in national_df.columns:
+        raise KeyError("'Submitter_Type' column not found in national_df")
 
-            # Select only COUNT columns for aggregation (NOT percentages)
-            count_cols = [
-                "Very Good", "Good", "Neither Good nor Poor", "Poor", "Very Poor", "Don't Know",
-                "Total Responses", "Total Eligible"
-            ]
-            available_count_cols = [col for col in count_cols if col in level_df.columns]
 
-            nhs_totals = nhs_df[available_count_cols].sum()
-            all_totals = level_df[available_count_cols].sum()
+def _process_single_sheet(
+    workbook: Workbook,
+    sheet_name: str,
+    config: dict,
+    national_df: pd.DataFrame,
+    options: dict = None,
+) -> None:
+    """Process a single sheet for England totals."""
+    # Extract parameters
+    sheet_config = config["sheet_config"]
+    service_type = config["service_type"]
+    england_rows = config["england_rows"]
 
-            # Create DataFrames and recalculate percentages properly
-            total_row = pd.DataFrame([all_totals], index=[0])
-            nhs_row = pd.DataFrame([nhs_totals], index=[0])
+    options = options or {}
+    all_level_data = options.get("all_level_data")
 
-            # Recalculate percentages for both rows
-            for row_df in [total_row, nhs_row]:
-                if all(col in row_df.columns for col in ["Very Good", "Good", "Total Responses"]):
-                    row_df["Percentage_Positive"] = (
-                        (row_df["Very Good"] + row_df["Good"]) / row_df["Total Responses"]
-                    ).round(4)
+    sheet = workbook[sheet_name]
 
-                if all(col in row_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
-                    row_df["Percentage_Negative"] = (
-                        (row_df["Poor"] + row_df["Very Poor"]) / row_df["Total Responses"]
-                    ).round(4)
-        else:
-            # Fallback to national_df approach
-            if "Submitter_Type" not in national_df.columns:
-                raise KeyError("'Submitter_Type' column not found in national_df")
+    # Get data for this sheet
+    total_row, nhs_row = _get_sheet_data(
+        sheet_name, national_df, all_level_data, service_type
+    )
 
-            total_row = national_df[national_df["Submitter_Type"] == "Total"]
-            nhs_row = national_df[national_df["Submitter_Type"] == "NHS"]
+    # Get output configuration
+    output_cols, data_columns, name_col_idx = _get_sheet_configuration(
+        sheet_name, sheet_config, service_type
+    )
 
-            if total_row.empty or nhs_row.empty:
-                raise KeyError("national_df must contain 'Total' and 'NHS' rows")
+    # Write England including IS row
+    england_config = {
+        "england_rows": england_rows,
+        "name_col_idx": name_col_idx,
+        "data_columns": data_columns,
+        "output_cols": output_cols,
+        "service_type": service_type,
+    }
+    _write_england_including_is_row(sheet, england_config, total_row)
 
-        # Get output columns for this sheet to determine positioning
-        output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
+    # Write England excluding IS row
+    _write_england_excluding_is_row(sheet, england_config, nhs_row)
 
-        # Extract data columns dynamically from config (exclude geographic identifiers)
-        skip_cols = ENGLAND_ROWS_SKIP_COLUMNS.get(sheet_name, 0)
-        data_columns = output_cols[skip_cols:]
+    # Write Selection row
+    _write_selection_row(sheet, england_config, nhs_row)
 
-        # Row 12: England (including IS)
-        name_col_idx = output_cols.index(sheet_config["england_label_column"]) + 1
-        sheet.cell(
-            row=england_rows["including_is"], column=name_col_idx
-        ).value = "England (including Independent Sector Providers)"
 
-        for col_name in data_columns:
-            if col_name in output_cols and col_name in total_row.columns:
-                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
-                value = total_row[col_name].values[0]
-                # Convert NaN values to dashes to match VBA behaviour
-                if pd.isna(value):
-                    value = '-'
-                sheet.cell(
-                    row=england_rows["including_is"], column=col_idx
-                ).value = value
+def _get_sheet_data(
+    sheet_name: str,
+    national_df: pd.DataFrame,
+    all_level_data: dict = None,
+    service_type: str = "inpatient",
+) -> tuple:
+    """Get data for a specific sheet."""
+    # Determine appropriate data source for this sheet
+    data_source_level = ENGLAND_TOTALS_DATA_SOURCE.get(sheet_name)
 
-        # Write dashes to speciality columns for England including IS (not applicable at national level)
-        for col_name in SPECIALITY_COLS:
-            if col_name in output_cols:
-                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
-                sheet.cell(row=england_rows["including_is"], column=col_idx).value = '-'
+    # Use sheet-appropriate data if available, fallback to national_df
+    if all_level_data and data_source_level and data_source_level in all_level_data:
+        return _get_data_from_level(
+            all_level_data[data_source_level], all_level_data, service_type
+        )
+    else:
+        return _get_data_from_national(national_df, service_type)
 
-        # Row 13: England (excluding IS)
+
+def _get_data_from_level(
+    level_df: pd.DataFrame, all_level_data: dict = None, service_type: str = "inpatient"
+) -> tuple:
+    """Get data from level-specific DataFrame."""
+    # Calculate totals excluding IS1 (NHS only)
+    if "ICB_Code" in level_df.columns:
+        nhs_df = level_df[level_df["ICB_Code"] != IS1_CODE]
+    else:
+        nhs_df = level_df
+
+    # Select count columns
+    count_cols = _get_count_columns(level_df, service_type)
+    available_count_cols = [col for col in count_cols if col in level_df.columns]
+
+    # Calculate totals
+    nhs_totals = nhs_df[available_count_cols].sum()
+    all_totals = level_df[available_count_cols].sum()
+
+    # Create DataFrames
+    total_row = pd.DataFrame([all_totals], index=[0])
+    nhs_row = pd.DataFrame([nhs_totals], index=[0])
+
+    # Recalculate percentages
+    _recalculate_percentages(total_row)
+    _recalculate_percentages(nhs_row)
+
+    return total_row, nhs_row
+
+    # Select count columns
+    count_cols = _get_count_columns(level_df)
+    available_count_cols = [col for col in count_cols if col in level_df.columns]
+
+    # Calculate totals
+    nhs_totals = nhs_df[available_count_cols].sum()
+    all_totals = level_df[available_count_cols].sum()
+
+    # Create DataFrames
+    total_row = pd.DataFrame([all_totals], index=[0])
+    nhs_row = pd.DataFrame([nhs_totals], index=[0])
+
+    # Recalculate percentages
+    _recalculate_percentages(total_row)
+    _recalculate_percentages(nhs_row)
+
+    return total_row, nhs_row
+
+
+def _get_count_columns(level_df: pd.DataFrame, service_type: str = "inpatient") -> list:
+    """Get list of count columns for aggregation."""
+    return get_count_columns_for_service(service_type)
+
+
+def _recalculate_percentages(row_df: pd.DataFrame) -> None:
+    """Recalculate percentage columns for a DataFrame row."""
+    if all(col in row_df.columns for col in ["Very Good", "Good", "Total Responses"]):
+        row_df["Percentage_Positive"] = (
+            (row_df["Very Good"] + row_df["Good"]) / row_df["Total Responses"]
+        ).round(4)
+
+    if all(col in row_df.columns for col in ["Poor", "Very Poor", "Total Responses"]):
+        row_df["Percentage_Negative"] = (
+            (row_df["Poor"] + row_df["Very Poor"]) / row_df["Total Responses"]
+        ).round(4)
+
+
+def _get_data_from_national(
+    national_df: pd.DataFrame, service_type: str = "inpatient"
+) -> tuple:
+    """Get data from national DataFrame."""
+    if "Submitter_Type" not in national_df.columns:
+        raise KeyError("'Submitter_Type' column not found in national_df")
+
+    total_row = national_df[national_df["Submitter_Type"] == "Total"]
+    nhs_row = national_df[national_df["Submitter_Type"] == "NHS"]
+
+    if total_row.empty or nhs_row.empty:
+        raise KeyError("national_df must contain 'Total' and 'NHS' rows")
+
+    return total_row, nhs_row
+
+
+def _get_sheet_configuration(
+    sheet_name: str, sheet_config: dict, service_type: str
+) -> tuple:
+    """Get configuration for a specific sheet."""
+    output_cols = OUTPUT_COLUMNS[service_type].get(sheet_name, [])
+    skip_cols = ENGLAND_ROWS_SKIP_COLUMNS.get(sheet_name, 0)
+    data_columns = output_cols[skip_cols:]
+    name_col_idx = output_cols.index(sheet_config["england_label_column"]) + 1
+
+    return output_cols, data_columns, name_col_idx
+
+
+def _write_england_including_is_row(
+    sheet,
+    config: dict,
+    total_row: pd.DataFrame,
+) -> None:
+    """Write England including IS row."""
+    # Extract config parameters
+    england_rows = config["england_rows"]
+    name_col_idx = config["name_col_idx"]
+    data_columns = config["data_columns"]
+    output_cols = config["output_cols"]
+    service_type = config["service_type"]
+
+    # Write label
+    england_label = (
+        "England"
+        if service_type == "ae"
+        else "England (including Independent Sector Providers)"
+    )
+    sheet.cell(
+        row=england_rows["including_is"], column=name_col_idx
+    ).value = england_label
+
+    # Write data
+    for col_name in data_columns:
+        if col_name in output_cols and col_name in total_row.columns:
+            col_idx = output_cols.index(col_name) + 1
+            value = total_row[col_name].values[0]
+            if pd.isna(value):
+                value = "-"
+            sheet.cell(row=england_rows["including_is"], column=col_idx).value = value
+
+    # Write dashes to speciality columns
+    for col_name in SPECIALITY_COLS:
+        if col_name in output_cols:
+            col_idx = output_cols.index(col_name) + 1
+            sheet.cell(row=england_rows["including_is"], column=col_idx).value = "-"
+
+
+def _write_england_excluding_is_row(
+    sheet,
+    config: dict,
+    nhs_row: pd.DataFrame,
+) -> None:
+    """Write England excluding IS row."""
+    # Extract config parameters
+    england_rows = config["england_rows"]
+    name_col_idx = config["name_col_idx"]
+    data_columns = config["data_columns"]
+    output_cols = config["output_cols"]
+
+    # Skip if same row as including IS (A&E case)
+    if england_rows["excluding_is"] != england_rows["including_is"]:
         sheet.cell(
             row=england_rows["excluding_is"], column=name_col_idx
         ).value = "England (excluding Independent Sector Providers)"
 
+        # Write data
         for col_name in data_columns:
             if col_name in output_cols and col_name in nhs_row.columns:
-                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
+                col_idx = output_cols.index(col_name) + 1
                 value = nhs_row[col_name].values[0]
-                # Convert NaN values to dashes to match VBA behaviour
                 if pd.isna(value):
-                    value = '-'
-                sheet.cell(
-                    row=england_rows["excluding_is"], column=col_idx
-                ).value = value
+                    value = "-"
+                sheet.cell(row=england_rows["excluding_is"], column=col_idx).value = value
 
-        # Write dashes to speciality columns for England excluding IS (not applicable at national level)
+        # Write dashes to speciality columns
         for col_name in SPECIALITY_COLS:
             if col_name in output_cols:
-                col_idx = output_cols.index(col_name) + 1  # +1 for 1-indexed
-                sheet.cell(row=england_rows["excluding_is"], column=col_idx).value = '-'
-
-        # Row 14: Selection placeholder - only write label, preserve formulas in data columns
-        sheet.cell(
-            row=england_rows["selection"], column=name_col_idx
-        ).value = "Selection (excluding suppressed data)"
-
-        # Selection row: PRESERVE EXISTING FORMULAS - don't overwrite cells with formulas
-        # The template has formulas like =SUBTOTAL(9,C15:C57) that should be preserved
-        for col_name in data_columns:
-            if col_name in output_cols and col_name in total_row.columns:
                 col_idx = output_cols.index(col_name) + 1
-                cell = sheet.cell(row=england_rows["selection"], column=col_idx)
+                sheet.cell(row=england_rows["excluding_is"], column=col_idx).value = "-"
 
-                # Only write if cell doesn't already contain a formula
-                if not _has_formula(cell):
-                    cell.value = total_row[col_name].values[0]
-                # If it has a formula, preserve it (formulas will auto-calculate from data)
+
+def _write_selection_row(
+    sheet,
+    config: dict,
+    nhs_row: pd.DataFrame,
+) -> None:
+    """Write Selection row."""
+    # Extract config parameters
+    england_rows = config["england_rows"]
+    name_col_idx = config["name_col_idx"]
+    data_columns = config["data_columns"]
+    output_cols = config["output_cols"]
+
+    # Write label
+    sheet.cell(
+        row=england_rows["selection"], column=name_col_idx
+    ).value = "Selection (excluding suppressed data)"
+
+    # Write data, preserving formulas
+    for col_name in data_columns:
+        if col_name in output_cols and col_name in nhs_row.columns:
+            col_idx = output_cols.index(col_name) + 1
+            cell = sheet.cell(row=england_rows["selection"], column=col_idx)
+
+            # Only write if cell doesn't already contain a formula
+            if not _has_formula(cell):
+                cell.value = nhs_row[col_name].values[0]
+
+    # Cache formula results for validation
+    # This ensures formulas work correctly when workbook is read with data_only=True
+    _cache_england_totals_formula_results(sheet, england_rows["selection"])
+
+    # Cache formula results for validation
+    # This mimics Excel's behavior of caching calculated values
+    # so they can be read with data_only=True
+    _cache_england_totals_formula_results(sheet, england_rows["selection"])
+
+
+# %%
+def _cache_england_totals_formula_results(sheet, selection_row: int) -> None:
+    """Cache formula results for England totals rows to enable data_only validation.
+
+    When Excel saves a workbook, it caches the calculated formula results in the file.
+    When you open it with data_only=True, openpyxl reads these cached values.
+    When openpyxl saves a workbook, it does NOT cache the formula results.
+    This function manually calculates and caches those results.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        selection_row: Row number of the Selection row (e.g., 6 for AE, 14 for IP)
+
+    Note:
+        This function does NOT modify cell._value directly as that corrupts the
+        cell structure.
+        Instead, it creates a separate cache that can be used for validation.
+
+    """
+    # Calculate SUBTOTAL formulas manually and store results in sheet metadata
+    cached_results = {}
+
+    for col in range(1, sheet.max_column + 1):
+        cell = sheet.cell(row=selection_row, column=col)
+
+        # Only process cells with SUBTOTAL formulas
+        if (
+            cell.data_type == "f"
+            and isinstance(cell.value, str)
+            and "SUBTOTAL(9," in cell.value
+        ):
+            # Extract range from formula like "=SUBTOTAL(9,D7:D999)"
+            try:
+                formula = cell.value
+                range_part = formula.split("SUBTOTAL(9,")[1].split(")")[0]
+                col_letter = range_part.split(":")[0][0]  # 'D' from 'D7:D999'
+                start_row = int(range_part.split(":")[0][1:])  # 7 from 'D7:D999'
+                end_row = int(range_part.split(":")[1][1:])  # 999 from 'D7:D999'
+
+                col_idx = ord(col_letter) - ord("A") + 1
+
+                # Calculate the sum (SUBTOTAL(9,...) sums visible cells)
+                total = 0
+                for row in range(start_row, end_row + 1):
+                    data_cell = sheet.cell(row=row, column=col_idx)
+                    if data_cell.value and isinstance(data_cell.value, (int, float)):
+                        # Only sum if row is not hidden (SUBTOTAL behavior)
+                        if not sheet.row_dimensions[row].hidden:
+                            total += data_cell.value
+
+                # Store the calculated result
+                if total > 0:
+                    cached_results[cell.coordinate] = total
+
+            except (IndexError, ValueError, AttributeError):
+                # If formula parsing fails, skip this cell
+                pass
+
+    # Store cached results in sheet metadata
+    if cached_results:
+        if not hasattr(sheet, "_fft_cached_formulas"):
+            sheet._fft_cached_formulas = {}
+        sheet._fft_cached_formulas[selection_row] = cached_results
 
 
 # %%
@@ -690,23 +924,25 @@ def write_summary_sheet(
     summary_data: dict,
     current_period: str,
     previous_period: str,
+    service_type: str = "inpatient",
 ) -> None:
     """Write summary data to the Summary sheet in the template.
 
     Populates the Summary sheet with organisations submitting, responses,
-    and percentages for Total, NHS, and IS providers.
+    and percentages for service-specific provider types.
 
     Args:
         workbook: Openpyxl Workbook object
         summary_data: Dict from extract_summary_data()
         current_period: Current FFT period (e.g., 'Jul-25')
         previous_period: Previous FFT period (e.g., 'Jun-25')
+        service_type: Service type ('inpatient', 'ae', etc.)
 
     Returns:
         None (modifies workbook in place)
 
     Raises:
-        KeyError: If Summary sheet doesn't exist
+        KeyError: If Summary sheet doesn't exist or service type not configured
 
     >>> from src.fft.writers import load_template, write_summary_sheet
     >>> wb = load_template('inpatient')
@@ -720,56 +956,63 @@ def write_summary_sheet(
     ...     'pct_negative_current': {'total': 0.02, 'nhs': 0.03, 'is': 0.0},
     ...     'pct_negative_previous': {'total': 0.02, 'nhs': 0.03, 'is': 0.0},
     ... }
-    >>> write_summary_sheet(wb, summary_data, 'Jul 25', 'Jun 25')
+    >>> write_summary_sheet(wb, summary_data, 'Jul 25', 'Jun 25', 'inpatient')
     >>> wb['Summary'].cell(row=8, column=3).value
     150
     >>> wb['Summary'].cell(row=9, column=3).value
     134
 
+    # Test AE service type
+    >>> wb_ae = load_template('ae')
+    >>> summary_data_ae = {
+    ...     'orgs_submitting': {'total': 200, 'acute': 150, 'wics': 50},
+    ...     'responses_to_date': {'total': 3000000, 'acute': 2500000, 'wics': 500000},
+    ...     'responses_current': {'total': 300000, 'acute': 250000, 'wics': 50000},
+    ...     'responses_previous': {'total': 290000, 'acute': 240000, 'wics': 48000},
+    ...     'pct_positive_current': {'total': 0.95, 'acute': 0.94, 'wics': 0.98},
+    ...     'pct_positive_previous': {'total': 0.94, 'acute': 0.93, 'wics': 0.97},
+    ...     'pct_negative_current': {'total': 0.03, 'acute': 0.04, 'wics': 0.02},
+    ...     'pct_negative_previous': {'total': 0.04, 'acute': 0.05, 'wics': 0.03},
+    ... }
+    >>> write_summary_sheet(wb_ae, summary_data_ae, 'Jul 25', 'Jun 25', 'ae')
+    >>> wb_ae['Summary'].cell(row=5, column=3).value
+    200
+    >>> wb_ae['Summary'].cell(row=6, column=3).value
+    150
+
     """
     if "Summary" not in workbook.sheetnames:
         raise KeyError("Sheet 'Summary' not found in workbook")
 
+    if service_type not in SUMMARY_SHEET_CONFIG:
+        raise KeyError(
+            f"No summary sheet configuration for service type: '{service_type}'"
+        )
+
     sheet = workbook["Summary"]
+    config = SUMMARY_SHEET_CONFIG[service_type]
 
-    # Row mapping: Total=8, NHS=9, IS=10
-    rows = {"total": 8, "nhs": 9, "is": 10}
+    # Get provider types from the summary data
+    provider_types = list(summary_data["orgs_submitting"].keys())
 
-    # Column mapping (based on template structure)
-    # C: Orgs submitting (current)
-    # D: Responses to date
-    # E: Responses current
-    # F: Responses previous
-    # G: % Positive current
-    # H: % Positive previous
-    # I: % Negative current
-    # J: % Negative previous
-    cols = {
-        "orgs_submitting": 3,  # C
-        "responses_to_date": 4,  # D
-        "responses_current": 5,  # E
-        "responses_previous": 6,  # F
-        "pct_positive_current": 7,  # G
-        "pct_positive_previous": 8,  # H
-        "pct_negative_current": 9,  # I
-        "pct_negative_previous": 10,  # J
-    }
-
-    # Write period headers (row 7)
-    sheet.cell(row=7, column=3).value = current_period
-    sheet.cell(row=7, column=4).value = current_period
-    sheet.cell(row=7, column=5).value = current_period
-    sheet.cell(row=7, column=6).value = previous_period
-    sheet.cell(row=7, column=7).value = current_period
-    sheet.cell(row=7, column=8).value = previous_period
-    sheet.cell(row=7, column=9).value = current_period
-    sheet.cell(row=7, column=10).value = previous_period
+    # Write period headers
+    period_row = config["period_row"]
+    for col_idx in range(3, 11):  # Columns C to J
+        if col_idx in [3, 4, 5, 7, 9]:  # Current period columns
+            sheet.cell(row=period_row, column=col_idx).value = current_period
+        elif col_idx in [6, 8, 10]:  # Previous period columns
+            sheet.cell(row=period_row, column=col_idx).value = previous_period
 
     # Write data for each provider type
-    for provider_key, row in rows.items():
-        for data_key, col in cols.items():
-            value = summary_data[data_key][provider_key]
-            sheet.cell(row=row, column=col).value = value
+    for provider_key in provider_types:
+        if provider_key not in config["rows"]:
+            continue  # Skip if provider type not configured for this service
+
+        row = config["rows"][provider_key]
+        for data_key, col in config["cols"].items():
+            if data_key in summary_data and provider_key in summary_data[data_key]:
+                value = summary_data[data_key][provider_key]
+                sheet.cell(row=row, column=col).value = value
 
 
 # %%
@@ -868,8 +1111,10 @@ def populate_summary_sheet(
             time_series_df, service_type, current_period, previous_period
         )
 
-        # Write to Summary sheet
-        write_summary_sheet(workbook, summary_data, current_period, previous_period)
+        # Write to Summary sheet with service type
+        write_summary_sheet(
+            workbook, summary_data, current_period, previous_period, service_type
+        )
 
     except FileNotFoundError as e:
         logger.warning(f"Collections Overview file not found: {e}")
