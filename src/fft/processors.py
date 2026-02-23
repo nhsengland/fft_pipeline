@@ -752,7 +752,7 @@ def extract_summary_data(
     >>> result_ae['orgs_submitting']['total']
     np.int64(200)
     >>> result_ae['orgs_submitting']['acute']
-    np.int64(150)
+    'NA'
     >>> result_ae['responses_current']['wics']
     np.int64(50000)
 
