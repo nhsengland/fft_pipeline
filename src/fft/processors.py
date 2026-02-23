@@ -810,8 +810,6 @@ def extract_summary_data(
         return (likely_val + extremely_likely_val) / responses_val
 
     # Get provider types for this service
-    provider_types = list(summary_config["orgs_submitting"].keys())
-
     # Initialize ALL values to "NA" first (matching VBA line 37)
     provider_types = list(summary_config["orgs_submitting"].keys())
     orgs_submitting = {key: "NA" for key in provider_types}
