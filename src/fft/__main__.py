@@ -556,10 +556,15 @@ def main():
 
     # Determine service type from args
     service_type: str | None = None
-    for flag, stype in SERVICE_TYPES.items():
-        if getattr(args, flag, False):
-            service_type = stype
-            break
+    selected_service_flags = [
+        (flag, stype) for flag, stype in SERVICE_TYPES.items() if getattr(args, flag, False)
+    ]
+    if len(selected_service_flags) > 1:
+        parser.error("Multiple service types specified; please choose exactly one.")
+        sys.exit(1)
+    elif selected_service_flags:
+        # Exactly one service flag provided
+        _, service_type = selected_service_flags[0]
 
     if args.validate:
         # Validation mode (with optional service type filter)
