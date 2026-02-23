@@ -7,6 +7,9 @@ from fft.config import AGGREGATION_COLUMNS, MODE_COLS, SUPPRESSION_THRESHOLD
 # Constants for suppression logic
 SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
 
+# Constants for suppression logic
+SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
+
 
 # %%
 def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:

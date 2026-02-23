@@ -997,6 +997,18 @@ def _cache_england_totals_formula_results(sheet, selection_row: int) -> None:
             sheet._fft_cached_formulas = {}
         sheet._fft_cached_formulas[selection_row] = cached_results
 
+        # Selection row: PRESERVE EXISTING FORMULAS - don't overwrite cells with formulas
+        # The template has formulas like =SUBTOTAL(9,C15:C57) that should be preserved
+        for col_name in data_columns:
+            if col_name in output_cols and col_name in total_row.columns:
+                col_idx = output_cols.index(col_name) + 1
+                cell = sheet.cell(row=england_rows["selection"], column=col_idx)
+
+                # Only write if cell doesn't already contain a formula
+                if not _has_formula(cell):
+                    cell.value = total_row[col_name].values[0]
+                # If it has a formula, preserve it (formulas will auto-calculate from data)
+
 
 # %%
 def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
