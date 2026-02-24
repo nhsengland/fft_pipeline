@@ -369,11 +369,11 @@ class PeriodLabelCellConfig(TypedDict):
     template: str
 
 
-def _period_cfg(label):
+def _period_cfg(label, cell="A2"):
     return {
         "notes_title": {
             "sheet": "Notes",
-            "cell": "A2",
+            "cell": cell,
             "template": f"{label} Friends and Family Test (FFT) Data - {{period}}",
         }
     }
@@ -381,7 +381,7 @@ def _period_cfg(label):
 
 PERIOD_LABEL_CONFIG: dict[str, dict[str, PeriodLabelCellConfig]] = {
     "inpatient": _period_cfg("Inpatient"),
-    "ae": _period_cfg("A&E"),
+    "ae": _period_cfg("A&E", "B2"),
     "ambulance": _period_cfg("Ambulance"),
 }
 
