@@ -10,12 +10,12 @@ from fft.config import (
     IS1_NAME,
     NHS_PROVIDER_KEYWORDS,
     OUTPUT_COLUMNS,
+    OUTPUTS_DIR,
     PROCESSING_LEVELS,
     SERVICE_TYPES,
     TEMPLATE_CONFIG,
     VALIDATION_CONFIG,
     VALIDATION_KEY_COLUMNS,
-    OUTPUTS_DIR,
 )
 from fft.loaders import find_latest_files, load_raw_data
 from fft.processors import (
@@ -40,6 +40,8 @@ from fft.validation import (
     extract_service_type,
     find_matching_ground_truth,
     print_comparison_report,
+    print_header_validation_report,
+    validate_headers,
 )
 from fft.writers import (
     format_percentage_columns,
@@ -116,18 +118,18 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
             continue
         df = cleaned_data[level]
         df["ICB_Code"] = df.apply(
-            lambda row: IS1_CODE
-            if not all(
-                keyword in str(row["Trust_Name"]).upper()
-                for keyword in NHS_PROVIDER_KEYWORDS
-            )
-            else row["ICB_Code"],
+            lambda row: (
+                IS1_CODE
+                if not all(
+                    keyword in str(row["Trust_Name"]).upper()
+                    for keyword in NHS_PROVIDER_KEYWORDS
+                )
+                else row["ICB_Code"]
+            ),
             axis=1,
         )
         df["ICB_Name"] = df.apply(
-            lambda row: IS1_NAME
-            if row["ICB_Code"] == IS1_CODE
-            else row["ICB_Name"],
+            lambda row: IS1_NAME if row["ICB_Code"] == IS1_CODE else row["ICB_Name"],
             axis=1,
         )
         cleaned_data[level] = df
@@ -158,7 +160,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     icb_df["Suppression_Required"] = (
         icb_df["First_Level_Suppression"] | icb_df["Second_Level_Suppression"]
     )
-    icb_suppressed = suppress_values(icb_df.copy())
+    icb_suppressed = suppress_values(icb_df.copy(), service_type)
 
     # Organisation level suppression (cascade from ICB)
     org_df = add_rank_column(org_df, group_by_col="ICB_Code")
@@ -170,7 +172,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     org_df["Suppression_Required"] = org_df[
         ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
     ].max(axis=1)
-    org_suppressed = suppress_values(org_df.copy())
+    org_suppressed = suppress_values(org_df.copy(), service_type)
 
     # Site level suppression (cascade from Organisation)
     if "site" in cleaned_data:
@@ -184,7 +186,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         site_df["Suppression_Required"] = site_df[
             ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
         ].max(axis=1)
-        site_suppressed = suppress_values(site_df.copy())
+        site_suppressed = suppress_values(site_df.copy(), service_type)
 
     # Ward level suppression (includes second-level and cascade from Site)
     if "ward" in cleaned_data:
@@ -199,7 +201,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         ward_df["Suppression_Required"] = ward_df[
             ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
         ].max(axis=1)
-        ward_suppressed = suppress_values(ward_df.copy())
+        ward_suppressed = suppress_values(ward_df.copy(), service_type)
 
     # Step 10: Load template workbook
     logger.info("Loading template...")
@@ -262,7 +264,13 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
 
     # Step 13: Write England totals
     logger.info("Writing England totals...")
-    write_england_totals(wb, service_type, national_df, org_counts, suppressed_data, cleaned_data)
+    write_england_totals(
+        wb,
+        service_type,
+        national_df,
+        org_counts,
+        {"suppressed_data": suppressed_data, "all_level_data": cleaned_data},
+    )
 
     # Step 14: Write BS lookup data (use unsuppressed ward data for lookups)
     logger.info("Writing BS lookup data...")
@@ -293,7 +301,9 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     return output_path
 
 
-def validate_existing_outputs(month_filter: str | None = None) -> None:
+def validate_existing_outputs(
+    month_filter: str | None = None, service_type_filter: str | None = None
+) -> None:
     """Validate existing output files against ground truth."""
     outputs_dir = Path(OUTPUTS_DIR)
 
@@ -324,6 +334,10 @@ def validate_existing_outputs(month_filter: str | None = None) -> None:
 
         if not service_type:
             logger.warning(f"Cannot determine service type for: {output_path.name}")
+            continue
+
+        # Filter by service type if specified
+        if service_type_filter and service_type != service_type_filter:
             continue
 
         logger.info(f"Validating {output_path.name} (service: {service_type})")
@@ -366,30 +380,7 @@ def _validate_output(output_path: Path, service_type: str) -> None:
     max_differences_to_show = 25  # Show enough detail but keep readable
 
     try:
-        results = []
-        sheets_to_check = VALIDATION_CONFIG.get(service_type, [])
-
-        for sheet_name in sheets_to_check:
-            # Use key-based comparison for sheets with configured key columns
-            if sheet_name in VALIDATION_KEY_COLUMNS:
-                result = compare_data_by_key(
-                    expected_path=ground_truth_path,
-                    actual_path=output_path,
-                    sheet_name=sheet_name,
-                    key_column=VALIDATION_KEY_COLUMNS[sheet_name],
-                    start_row=15,
-                    data_only=True,
-                )
-            else:
-                # Use row-based comparison for other sheets
-                result = compare_data_range(
-                    expected_path=ground_truth_path,
-                    actual_path=output_path,
-                    sheet_name=sheet_name,
-                    start_row=15,
-                    data_only=True,
-                )
-            results.append(result)
+        results = _perform_sheet_comparisons(output_path, ground_truth_path, service_type)
 
         # Generate comprehensive validation report
         print("\n" + "=" * 60)
@@ -398,27 +389,108 @@ def _validate_output(output_path: Path, service_type: str) -> None:
         print("Comparing: Pipeline Output vs VBA Ground Truth")
         print_comparison_report(results, max_diffs_per_sheet=max_differences_to_show)
 
-        # Summary assessment
-        total_sheets = len(
-            [
-                r
-                for r in results
-                if not (r["missing_in_actual"] or r["missing_in_expected"])
-            ]
-        )
-        identical_sheets = len([r for r in results if r["identical"]])
+        _perform_header_validation(output_path, ground_truth_path, service_type)
 
-        if total_sheets > 0 and identical_sheets == total_sheets:
-            logger.info("✓ Validation PASSED - All sheets identical to ground truth")
-        elif total_sheets == 0:
-            logger.warning("⚠ Validation INCOMPLETE - No comparable sheets found")
-        else:
-            msg = f"✗ Validation FAILED - {identical_sheets}/{total_sheets} sheets match"
-            logger.warning(msg)
+        # Summary assessment
+        _assess_validation_results(results)
 
     except Exception as e:
         logger.error(f"Validation failed with error: {e}")
         raise
+
+
+def _perform_sheet_comparisons(
+    output_path: Path, ground_truth_path: Path, service_type: str
+) -> list:
+    """Perform comparisons between sheets in output and ground truth files."""
+    results = []
+    sheets_to_check = VALIDATION_CONFIG.get(service_type, [])
+
+    for sheet_name in sheets_to_check:
+        ground_truth_sheet = sheet_name
+
+        if sheet_name in VALIDATION_KEY_COLUMNS:
+            result = compare_data_by_key(
+                expected_path=ground_truth_path,
+                actual_path=output_path,
+                sheet_name=ground_truth_sheet,
+                key_column=VALIDATION_KEY_COLUMNS[sheet_name],
+                start_row=15,
+                data_only=True,
+                actual_sheet_name=sheet_name,
+            )
+        else:
+            result = compare_data_range(
+                expected_path=ground_truth_path,
+                actual_path=output_path,
+                sheet_name=ground_truth_sheet,
+                start_row=15,
+                data_only=True,
+                actual_sheet_name=sheet_name,
+            )
+        results.append(result)
+
+    return results
+
+
+def _perform_header_validation(
+    output_path: Path, ground_truth_path: Path, service_type: str
+) -> None:
+    """Perform header validation between output and ground truth files."""
+    try:
+        # Get service type from output filename
+        extracted_service_type = extract_service_type(output_path.name)
+        if not extracted_service_type:
+            return
+
+        header_results = validate_headers(
+            str(output_path),
+            str(ground_truth_path),
+            extracted_service_type,
+            sheets_to_validate=None,
+            verbose=False,
+        )
+
+        # Print detailed header validation report if we got results
+        if header_results:
+            print_header_validation_report(header_results)
+            _assess_header_validation_results(header_results)
+
+    except Exception as e:
+        logger.warning(f"⚠ Header validation skipped: {e}")
+
+
+def _assess_header_validation_results(header_results: dict) -> None:
+    """Assess and report header validation results."""
+    header_identical = sum(1 for r in header_results.values() if r["identical"])
+    header_total = len(header_results)
+
+    if header_total > 0:
+        if header_identical == header_total:
+            logger.info(
+                "✓ Header validation PASSED - All headers identical to ground truth"
+            )
+        else:
+            logger.warning(
+                f"⚠ Header validation ISSUES - {header_identical}/"
+                f"{header_total} sheets have matching headers"
+            )
+
+
+def _assess_validation_results(results: list) -> None:
+    """Assess and report overall validation results."""
+    total_sheets = len(
+        [r for r in results if not (r["missing_in_actual"] or r["missing_in_expected"])]
+    )
+    identical_sheets = len([r for r in results if r["identical"]])
+
+    if total_sheets > 0 and identical_sheets == total_sheets:
+        logger.info("✓ Validation PASSED - All sheets identical to ground truth")
+    elif total_sheets == 0:
+        logger.warning("⚠ Validation INCOMPLETE - No comparable sheets found")
+    else:
+        msg = f"✗ Validation FAILED - {identical_sheets}/{total_sheets} sheets match"
+        logger.warning(msg)
 
 
 # %%
@@ -465,13 +537,12 @@ def main():
         description="FFT Pipeline - Process NHS Friends and Family Test data"
     )
 
-    # Build mutually exclusive group from config
-    group = parser.add_mutually_exclusive_group(required=True)
+    # Add service type flags
     for flag, service_type in SERVICE_TYPES.items():
-        group.add_argument(
+        parser.add_argument(
             f"--{flag}", action="store_true", help=f"Process {service_type.title()} data"
         )
-    group.add_argument(
+    parser.add_argument(
         "--validate",
         action="store_true",
         help="Validate existing output against ground truth",
@@ -486,26 +557,32 @@ def main():
 
     args = parser.parse_args()
 
+    # Determine service type from args
+    service_type: str | None = None
+    selected_service_flags = [
+        (flag, stype)
+        for flag, stype in SERVICE_TYPES.items()
+        if getattr(args, flag, False)
+    ]
+    if len(selected_service_flags) > 1:
+        parser.error("Multiple service types specified; please choose exactly one.")
+        sys.exit(1)
+    elif selected_service_flags:
+        # Exactly one service flag provided
+        _, service_type = selected_service_flags[0]
+
     if args.validate:
-        # Validation-only mode
+        # Validation mode (with optional service type filter)
         try:
-            validate_existing_outputs(args.month)
+            validate_existing_outputs(args.month, service_type)
         except Exception as e:
             logger.error(f"Validation failed: {e}", exc_info=True)
             sys.exit(1)
     else:
-        # Pipeline mode - determine service type from args
-        service_type: str | None = None
-        for flag, stype in SERVICE_TYPES.items():
-            if getattr(args, flag, False):
-                service_type = stype
-                break
-
+        # Pipeline mode - service type required
         if service_type is None:
             parser.error("No service type specified")
             sys.exit(1)
-
-        assert service_type is not None
 
         try:
             run_pipeline(service_type, month=args.month)

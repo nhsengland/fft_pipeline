@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from fft.config import AGGREGATION_COLUMNS, SUPPRESSION_THRESHOLD
+from fft.config import AGGREGATION_COLUMNS, MODE_COLS, SUPPRESSION_THRESHOLD
 
 # Constants for suppression logic
 SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
@@ -75,9 +75,12 @@ def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
 
 # %%
 
+
 def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.DataFrame:
     """Add ranking column based on Total Responses within groups.
-    For ward data, uses VBA tie-breaking: Ward_Name → First Speciality → Second Speciality.
+
+    For ward data, uses VBA tie-breaking: Ward_Name → First Speciality
+    → Second Specialty.
     For other levels, ranks by Total Responses only.
 
     Args:
@@ -88,11 +91,7 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
         DataFrame with added 'Rank' column
 
     """
-    if "Total Responses" not in df.columns:
-        raise KeyError("'Total Responses' column not found in DataFrame")
-
-    if group_by_col and group_by_col not in df.columns:
-        raise KeyError(f"'{group_by_col}' column not found in DataFrame")
+    _validate_rank_columns(df, group_by_col)
 
     df = df.copy()
     df["Rank"] = 0
@@ -101,49 +100,73 @@ def add_rank_column(df: pd.DataFrame, group_by_col: str | None = None) -> pd.Dat
     is_ward_data = "Ward_Name" in df.columns and "First Speciality" in df.columns
 
     if group_by_col:
-        for group_name, group_indices in df.groupby(group_by_col).groups.items():
-            group_data = df.loc[group_indices]
-            non_zero_data = group_data[group_data["Total Responses"] > 0]
-
-            if non_zero_data.empty:
-                continue
-
-            if is_ward_data:
-                # VBA tie-breaking using specialty-first approach (best performing so far)
-                # This gave us 24 differences vs 60 with ward name approaches
-                df_temp = non_zero_data.copy()
-
-                # Use specialty text directly for sorting (VBA sorts alphabetically)
-                if "First Speciality" in df_temp.columns:
-                    df_temp["_spec1_text"] = df_temp["First Speciality"].astype(str).fillna("")
-                else:
-                    df_temp["_spec1_text"] = ""
-
-                if "Second Speciality" in df_temp.columns:
-                    df_temp["_spec2_text"] = df_temp["Second Speciality"].astype(str).fillna("")
-                else:
-                    df_temp["_spec2_text"] = ""
-
-                # Sort to match VBA tie-breaking: Total Responses → First Specialty → Second Specialty → Ward_Name
-                # VBA prioritizes specialty-based tie-breaking over ward name alphabetical sorting
-                sorted_indices = df_temp.sort_values(
-                    ["Total Responses", "_spec1_text", "_spec2_text", "Ward_Name"]
-                ).index
-            else:
-                # Standard response-based ranking
-                sorted_indices = non_zero_data.sort_values("Total Responses").index
-
-            for i, idx in enumerate(sorted_indices, 1):
-                df.loc[idx, "Rank"] = i
+        _rank_grouped_data(df, group_by_col, is_ward_data)
     else:
-        # ICB level - no grouping
-        non_zero_data = df[df["Total Responses"] > 0]
-        if not non_zero_data.empty:
-            sorted_indices = non_zero_data.sort_values("Total Responses").index
-            for i, idx in enumerate(sorted_indices, 1):
-                df.loc[idx, "Rank"] = i
+        _rank_ungrouped_data(df)
 
     return df
+
+
+def _validate_rank_columns(df: pd.DataFrame, group_by_col: str | None = None) -> None:
+    """Validate that required columns exist for ranking."""
+    if "Total Responses" not in df.columns:
+        raise KeyError("'Total Responses' column not found in DataFrame")
+
+    if group_by_col and group_by_col not in df.columns:
+        raise KeyError(f"'{group_by_col}' column not found in DataFrame")
+
+
+def _rank_grouped_data(df: pd.DataFrame, group_by_col: str, is_ward_data: bool) -> None:
+    """Rank data within groups."""
+    for group_name, group_indices in df.groupby(group_by_col).groups.items():
+        group_data = df.loc[group_indices]
+        non_zero_data = group_data[group_data["Total Responses"] > 0]
+
+        if non_zero_data.empty:
+            continue
+
+        if is_ward_data:
+            sorted_indices = _get_ward_sorted_indices(non_zero_data)
+        else:
+            sorted_indices = non_zero_data.sort_values("Total Responses").index
+
+        for i, idx in enumerate(sorted_indices, 1):
+            df.loc[idx, "Rank"] = i
+
+
+def _get_ward_sorted_indices(df: pd.DataFrame) -> pd.Index:
+    """Get sorted indices for ward data using VBA tie-breaking logic."""
+    df_temp = df.copy()
+
+    # Use specialty text directly for sorting (VBA sorts alphabetically)
+    df_temp["_spec1_text"] = (
+        (df_temp["First Speciality"] if "First Speciality" in df_temp.columns else "")
+        .astype(str)
+        .fillna("")
+    )
+    df_temp["_spec2_text"] = (
+        (df_temp["Second Speciality"] if "Second Speciality" in df_temp.columns else "")
+        .astype(str)
+        .fillna("")
+    )
+
+    # Sort to match VBA tie-breaking: Total Responses → First
+    # Specialty → Second Specialty → Ward_Name
+    # VBA prioritizes specialty-based tie-breaking over ward name
+    # alphabetical sorting
+    sorted_indices = df_temp.sort_values(
+        ["Total Responses", "_spec1_text", "_spec2_text", "Ward_Name"]
+    ).index
+    return sorted_indices
+
+
+def _rank_ungrouped_data(df: pd.DataFrame) -> None:
+    """Rank data without grouping (ICB level)."""
+    non_zero_data = df[df["Total Responses"] > 0]
+    if not non_zero_data.empty:
+        sorted_indices = non_zero_data.sort_values("Total Responses").index
+        for i, idx in enumerate(sorted_indices, 1):
+            df.loc[idx, "Rank"] = i
 
 
 def apply_second_level_suppression(
@@ -418,18 +441,20 @@ def apply_cascade_suppression(
     return child_df
 
 
-def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
+def suppress_values(df: pd.DataFrame, service_type: str | None = None) -> pd.DataFrame:
     """Replace sensitive values with '*' based on suppression flags.
 
     Applies suppression rules:
     - If ANY suppression flag is 1: Replace Likert responses with '*'
     - If First_Level_Suppression is 1: ALSO replace percentages with '*'
+    - If ANY suppression flag is 1: ALSO replace mode columns with '*'
     - Additionally applies individual breakdown column suppression (VBA-aligned)
 
     This ensures aggregated percentages don't reveal small counts.
 
     Args:
         df: DataFrame with suppression flag columns
+        service_type: Service type (e.g., 'inpatient', 'ae') for mode column handling
 
     Returns:
         DataFrame with values replaced by '*' where suppression required
@@ -464,6 +489,33 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
     '*'
     >>> result.loc[2, 'Very Good']
     50
+
+    # Test with mode columns (inpatient service)
+    >>> df_modes = pd.DataFrame({
+    ...     'Trust_Code': ['T1', 'T2'],
+    ...     'Very Good': [10, 3],
+    ...     'Mode SMS': [5, 2],
+    ...     'Mode Electronic Home': [3, 1],
+    ...     'First_Level_Suppression': [0, 1],
+    ...     'Second_Level_Suppression': [1, 0]
+    ... })
+    >>> result_modes = suppress_values(df_modes, service_type='inpatient')
+    >>> result_modes.loc[0, 'Mode SMS']
+    '*'
+    >>> result_modes.loc[0, 'Mode Electronic Home']
+    '*'
+    >>> result_modes.loc[1, 'Mode SMS']
+    '*'
+    >>> result_modes.loc[1, 'Mode Electronic Home']
+    '*'
+
+    # Test with AE service (no Mode Electronic Home)
+    >>> df_ae = df_modes.drop(columns=['Mode Electronic Home']).copy()
+    >>> result_ae = suppress_values(df_ae, service_type='ae')
+    >>> result_ae.loc[0, 'Mode SMS']
+    '*'
+    >>> result_ae.loc[1, 'Mode SMS']
+    '*'
 
     # Edge case: No suppression columns
     >>> df_no_suppress = pd.DataFrame({
@@ -503,7 +555,12 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
         col for col in ["Percentage_Positive", "Percentage_Negative"] if col in df.columns
     ]
 
-    for col in likert_cols + percentage_cols:
+    # Get mode columns based on service type
+    mode_cols = []
+    if service_type and service_type in MODE_COLS:
+        mode_cols = [col for col in MODE_COLS[service_type] if col in df.columns]
+
+    for col in likert_cols + percentage_cols + mode_cols:
         df[col] = df[col].astype(object)
 
     # Iterate through each row
@@ -523,5 +580,9 @@ def suppress_values(df: pd.DataFrame) -> pd.DataFrame:
             ):
                 for col in percentage_cols:
                     df.at[idx, col] = "*"
+
+            # Replace mode columns with '*' when ANY suppression is applied
+            for col in mode_cols:
+                df.at[idx, col] = "*"
 
     return df

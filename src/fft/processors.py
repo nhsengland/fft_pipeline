@@ -373,6 +373,7 @@ def aggregate_to_icb(df: pd.DataFrame) -> pd.DataFrame:
     """
     return _aggregate_by_level(df, ["ICB_Code", "ICB_Name"])
 
+
 def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Aggregate data to national level (NHS vs Independent providers).
 
@@ -501,8 +502,9 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     is1_count = (
         df["Trust_Name"]
         .apply(
-            lambda x: isinstance(x, str)
-            and not ("NHS" in x.upper() and "TRUST" in x.upper())
+            lambda x: (
+                isinstance(x, str) and not ("NHS" in x.upper() and "TRUST" in x.upper())
+            )
         )
         .sum()
     )
@@ -517,9 +519,9 @@ def aggregate_to_national(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     # Create working copy and add Submitter_Type
     work_df = df.copy()
     work_df["Submitter_Type"] = work_df["Trust_Name"].apply(
-        lambda x: "NHS"
-        if "NHS" in str(x).upper() and "TRUST" in str(x).upper()
-        else "IS1"
+        lambda x: (
+            "NHS" if "NHS" in str(x).upper() and "TRUST" in str(x).upper() else "IS1"
+        )
     )
 
     # Determine which columns to sum
@@ -676,7 +678,8 @@ def extract_summary_data(
     """Extract summary data from Time series for a given service type.
 
     Retrieves organisations submitting, responses, and calculates percentages
-    for Total, NHS, and Independent Sector providers.
+    for Total, NHS, and Independent Sector providers (inpatient) or
+    A&E Total, Acute Type 1&2, and WiCs & MIUs (AE).
 
     Args:
         time_series_df: DataFrame from Collections Overview 'Time series' sheet
@@ -723,6 +726,36 @@ def extract_summary_data(
     >>> result['responses_current']['total']
     np.int64(202745)
 
+    # Test AE service type
+    >>> df_ae = pd.DataFrame({
+    ...     'Collection': pd.to_datetime(['2025-07-01', '2025-06-01', '2025-05-01']),
+    ...     'A&E Submitted': [200, 195, 190],
+    ...     'A&E Acute Submitted': [150, 145, 140],
+    ...     'A&E WiCs & MIUs Submitted': [50, 48, 45],
+    ...     'A&E Responses': [300000, 290000, 280000],
+    ...     'A&E Acute Responses': [250000, 240000, 230000],
+    ...     'A&E WiCs & MIUs Responses': [50000, 48000, 45000],
+    ...     'A&E Likely': [270000, 261000, 252000],
+    ...     'A&E Extremely Likely': [20000, 19000, 18000],
+    ...     'A&E Acute Likely': [225000, 216000, 207000],
+    ...     'A&E Acute Extremely Likely': [17500, 16800, 16000],
+    ...     'A&E WiCs & MIUs Likely': [45000, 43200, 40500],
+    ...     'A&E WiCs & MIUs Extremely Likely': [7500, 7200, 6750],
+    ...     'A&E Unlikely': [15000, 14500, 14000],
+    ...     'A&E Extremely Unlikely': [5000, 4800, 4500],
+    ...     'A&E Acute Unlikely': [12500, 12000, 11500],
+    ...     'A&E Acute Extremely Unlikely': [4167, 4000, 3833],
+    ...     'A&E WiCs & MIUs Unlikely': [7500, 7200, 6750],
+    ...     'A&E WiCs & MIUs Extremely Unlikely': [3750, 3600, 3375],
+    ... })
+    >>> result_ae = extract_summary_data(df_ae, 'ae', 'Jul-25', 'Jun-25')
+    >>> result_ae['orgs_submitting']['total']
+    np.int64(200)
+    >>> result_ae['orgs_submitting']['acute']
+    'NA'
+    >>> result_ae['responses_current']['wics']
+    np.int64(50000)
+
     # Edge case: Unknown service type
     >>> extract_summary_data(df, 'unknown', 'Jul-25', 'Jun-25')
     Traceback (most recent call last):
@@ -739,6 +772,13 @@ def extract_summary_data(
     if service_type not in TIME_SERIES_PREFIXES:
         raise KeyError(f"Unknown service type: '{service_type}'")
 
+    # Get service-specific summary column configuration
+    if service_type not in SUMMARY_COLUMNS:
+        raise KeyError(
+            f"No summary column configuration for service type: '{service_type}'"
+        )
+
+    summary_config = SUMMARY_COLUMNS[service_type]
     prefix = TIME_SERIES_PREFIXES[service_type]
 
     # Convert periods to datetime objects for lookup
@@ -769,100 +809,57 @@ def extract_summary_data(
             return 0
         return (likely_val + extremely_likely_val) / responses_val
 
-    # Build orgs_submitting
-    orgs_cols = SUMMARY_COLUMNS["orgs_submitting"]
-    orgs_submitting = {
-        key: current_row[get_col(suffix)] for key, suffix in orgs_cols.items()
-    }
+    # Get provider types for this service
+    # Initialize ALL values to "NA" first (matching VBA line 37)
+    provider_types = list(summary_config["orgs_submitting"].keys())
+    orgs_submitting = {key: "NA" for key in provider_types}
+    responses_current = {key: "NA" for key in provider_types}
+    responses_previous = {key: "NA" for key in provider_types}
+    responses_to_date = {key: "NA" for key in provider_types}
+    pct_positive_current = {key: "NA" for key in provider_types}
+    pct_positive_previous = {key: "NA" for key in provider_types}
+    pct_negative_current = {key: "NA" for key in provider_types}
+    pct_negative_previous = {key: "NA" for key in provider_types}
 
-    # Build responses (current and previous)
-    resp_cols = SUMMARY_COLUMNS["responses"]
-    responses_current = {
-        key: current_row[get_col(suffix)] for key, suffix in resp_cols.items()
-    }
-    responses_previous = {
-        key: previous_row[get_col(suffix)] for key, suffix in resp_cols.items()
-    }
+    # Selectively overwrite only values that VBA sets
+    orgs_cols = summary_config["orgs_submitting"]
+    for key, suffix in orgs_cols.items():
+        # VBA only sets B3 (total) and B5 (wics), not B4 (acute)
+        if not (service_type == "ae" and key == "acute"):
+            orgs_submitting[key] = current_row[get_col(suffix)]
 
-    # Build responses to date (cumulative sum)
-    responses_to_date = {
-        key: time_series_df.loc[current_idx:, get_col(suffix)].sum()
-        for key, suffix in resp_cols.items()
-    }
+    # VBA sets all responses values
+    resp_cols = summary_config["responses"]
+    for key, suffix in resp_cols.items():
+        responses_current[key] = current_row[get_col(suffix)]
+        responses_previous[key] = previous_row[get_col(suffix)]
+        responses_to_date[key] = time_series_df.loc[current_idx:, get_col(suffix)].sum()
 
-    # Build percentage positive (current and previous)
-    pos_cols = SUMMARY_COLUMNS["positive"]
-    pct_positive_current = {
-        "total": calc_percentage(
-            current_row[get_col(pos_cols["likely"])],
-            current_row[get_col(pos_cols["extremely_likely"])],
-            responses_current["total"],
-        ),
-        "nhs": calc_percentage(
-            current_row[get_col(pos_cols["nhs_likely"])],
-            current_row[get_col(pos_cols["nhs_extremely_likely"])],
-            responses_current["nhs"],
-        ),
-        "is": calc_percentage(
-            current_row[get_col(pos_cols["is_likely"])],
-            current_row[get_col(pos_cols["is_extremely_likely"])],
-            responses_current["is"],
-        ),
+    # VBA sets percentages only if responses > 0
+    calc_context = {
+        "current_row": current_row,
+        "previous_row": previous_row,
+        "get_col": get_col,
+        "provider_types": provider_types,
+        "responses_current": responses_current,
+        "responses_previous": responses_previous,
+        "calc_percentage": calc_percentage,
     }
-    pct_positive_previous = {
-        "total": calc_percentage(
-            previous_row[get_col(pos_cols["likely"])],
-            previous_row[get_col(pos_cols["extremely_likely"])],
-            responses_previous["total"],
-        ),
-        "nhs": calc_percentage(
-            previous_row[get_col(pos_cols["nhs_likely"])],
-            previous_row[get_col(pos_cols["nhs_extremely_likely"])],
-            responses_previous["nhs"],
-        ),
-        "is": calc_percentage(
-            previous_row[get_col(pos_cols["is_likely"])],
-            previous_row[get_col(pos_cols["is_extremely_likely"])],
-            responses_previous["is"],
-        ),
-    }
+    pct_pos_curr, pct_pos_prev = _calculate_percentages(
+        calc_context, summary_config["positive"]
+    )
+    pct_neg_curr, pct_neg_prev = _calculate_percentages(
+        calc_context, summary_config["negative"], is_negative=True
+    )
 
-    # Build percentage negative (current and previous)
-    neg_cols = SUMMARY_COLUMNS["negative"]
-    pct_negative_current = {
-        "total": calc_percentage(
-            current_row[get_col(neg_cols["unlikely"])],
-            current_row[get_col(neg_cols["extremely_unlikely"])],
-            responses_current["total"],
-        ),
-        "nhs": calc_percentage(
-            current_row[get_col(neg_cols["nhs_unlikely"])],
-            current_row[get_col(neg_cols["nhs_extremely_unlikely"])],
-            responses_current["nhs"],
-        ),
-        "is": calc_percentage(
-            current_row[get_col(neg_cols["is_unlikely"])],
-            current_row[get_col(neg_cols["is_extremely_unlikely"])],
-            responses_current["is"],
-        ),
-    }
-    pct_negative_previous = {
-        "total": calc_percentage(
-            previous_row[get_col(neg_cols["unlikely"])],
-            previous_row[get_col(neg_cols["extremely_unlikely"])],
-            responses_previous["total"],
-        ),
-        "nhs": calc_percentage(
-            previous_row[get_col(neg_cols["nhs_unlikely"])],
-            previous_row[get_col(neg_cols["nhs_extremely_unlikely"])],
-            responses_previous["nhs"],
-        ),
-        "is": calc_percentage(
-            previous_row[get_col(neg_cols["is_unlikely"])],
-            previous_row[get_col(neg_cols["is_extremely_unlikely"])],
-            responses_previous["is"],
-        ),
-    }
+    # Only overwrite if VBA would calculate (responses > 0)
+    for key in provider_types:
+        if responses_current[key] != "NA" and responses_current[key] > 0:
+            pct_positive_current[key] = pct_pos_curr[key]
+            pct_negative_current[key] = pct_neg_curr[key]
+        if responses_previous[key] != "NA" and responses_previous[key] > 0:
+            pct_positive_previous[key] = pct_pos_prev[key]
+            pct_negative_previous[key] = pct_neg_prev[key]
 
     return {
         "orgs_submitting": orgs_submitting,
@@ -874,3 +871,56 @@ def extract_summary_data(
         "pct_negative_current": pct_negative_current,
         "pct_negative_previous": pct_negative_previous,
     }
+
+
+def _calculate_percentages(
+    calc_context: dict, cols_config: dict, is_negative: bool = False
+):
+    """Calculate current and previous percentages for positive or negative responses."""
+    # Extract from context
+    current_row = calc_context["current_row"]
+    previous_row = calc_context["previous_row"]
+    get_col = calc_context["get_col"]
+    provider_types = calc_context["provider_types"]
+    responses_current = calc_context["responses_current"]
+    responses_previous = calc_context["responses_previous"]
+    calc_percentage = calc_context["calc_percentage"]
+
+    pct_current = {}
+    pct_previous = {}
+
+    primary_key = "unlikely" if is_negative else "likely"
+    extreme_key = "extremely_unlikely" if is_negative else "extremely_likely"
+
+    for provider_type in provider_types:
+        if provider_type == "total":
+            pct_current[provider_type] = calc_percentage(
+                current_row[get_col(cols_config[primary_key])],
+                current_row[get_col(cols_config[extreme_key])],
+                responses_current[provider_type],
+            )
+            pct_previous[provider_type] = calc_percentage(
+                previous_row[get_col(cols_config[primary_key])],
+                previous_row[get_col(cols_config[extreme_key])],
+                responses_previous[provider_type],
+            )
+        else:
+            # For specific provider types (nhs, is, acute, wics)
+            primary_provider_key = f"{provider_type}_{primary_key}"
+            extreme_provider_key = f"{provider_type}_{extreme_key}"
+            if (
+                primary_provider_key in cols_config
+                and extreme_provider_key in cols_config
+            ):
+                pct_current[provider_type] = calc_percentage(
+                    current_row[get_col(cols_config[primary_provider_key])],
+                    current_row[get_col(cols_config[extreme_provider_key])],
+                    responses_current[provider_type],
+                )
+                pct_previous[provider_type] = calc_percentage(
+                    previous_row[get_col(cols_config[primary_provider_key])],
+                    previous_row[get_col(cols_config[extreme_provider_key])],
+                    responses_previous[provider_type],
+                )
+
+    return pct_current, pct_previous

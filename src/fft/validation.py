@@ -8,7 +8,14 @@ from typing import TypedDict
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string, get_column_letter
 
-from fft.config import VALIDATION_TOLERANCE
+from fft.config import (
+    CRITICAL_HEADER_CELLS,
+    HEADER_ROW_RANGES_BY_SERVICE,
+    HEADER_ROWS_BY_SERVICE,
+    HEADER_VALIDATION_EXCLUDED_SHEETS,
+    VALIDATION_TOLERANCE,
+)
+from fft.writers import get_cached_formula_results
 
 # Type for Excel cell values from openpyxl
 CellValue = str | int | float | bool | datetime | None
@@ -31,6 +38,115 @@ class SheetResult(TypedDict):
     differences: list[CellDifference]
     missing_in_actual: bool
     missing_in_expected: bool
+
+
+def compare_in_memory_cached_formulas(
+    wb_expected, wb_actual, sheets_to_compare: list[str] | None = None
+) -> list[SheetResult]:
+    """Compare in-memory cached formula results between two loaded workbooks.
+
+    This function compares workbooks that have cached formula results in memory
+    (before they've been saved to disk). Use this for immediate validation
+    during processing when workbooks have active _fft_cached_formulas attributes.
+
+    Args:
+        wb_expected: Loaded expected workbook with in-memory cache
+        wb_actual: Loaded actual workbook with in-memory cache
+        sheets_to_compare: List of sheet names to compare (None = all common sheets)
+
+    Returns:
+        List of SheetResult dicts, one per sheet compared
+
+    """
+    if sheets_to_compare is None:
+        sheets_to_compare = list(set(wb_expected.sheetnames) | set(wb_actual.sheetnames))
+
+    results = []
+    for sheet_name in sheets_to_compare:
+        if (
+            sheet_name not in wb_expected.sheetnames
+            or sheet_name not in wb_actual.sheetnames
+        ):
+            continue
+
+        ws_expected = wb_expected[sheet_name]
+        ws_actual = wb_actual[sheet_name]
+
+        expected_cache = get_cached_formula_results(ws_expected)
+        actual_cache = get_cached_formula_results(ws_actual)
+
+        differences = []
+        all_formula_coords = set(expected_cache.keys()) | set(actual_cache.keys())
+
+        for coord in all_formula_coords:
+            expected_val = expected_cache.get(coord)
+            actual_val = actual_cache.get(coord)
+
+            if not _values_are_equivalent(expected_val, actual_val):
+                differences.append(
+                    {
+                        "sheet": sheet_name,
+                        "cell": coord,
+                        "expected": expected_val,
+                        "actual": actual_val,
+                    }
+                )
+
+        results.append(
+            {
+                "name": sheet_name,
+                "identical": len(differences) == 0,
+                "differences": differences,
+                "missing_in_expected": False,
+                "missing_in_actual": False,
+            }
+        )
+
+    return results
+
+
+def compare_formula_results(
+    expected_path: Path | str,
+    actual_path: Path | str,
+    sheets_to_compare: list[str] | None = None,
+) -> list[SheetResult]:
+    """Compare formula calculation results between two workbooks.
+
+    Uses Excel's native formula value caching (data_only=True) to compare
+    the actual calculated results of formulas, ensuring validation compares
+    the exact computed values rather than formula text.
+
+    Args:
+        expected_path: Path to the ground truth workbook
+        actual_path: Path to the workbook to validate
+        sheets_to_compare: List of sheet names to compare (None = all common sheets)
+
+    Returns:
+        List of SheetResult dicts, one per sheet compared
+
+    Raises:
+        FileNotFoundError: If either workbook doesn't exist
+
+    """
+    expected_path = Path(expected_path)
+    actual_path = Path(actual_path)
+
+    if not expected_path.exists():
+        raise FileNotFoundError(f"Expected workbook not found: {expected_path}")
+    if not actual_path.exists():
+        raise FileNotFoundError(f"Actual workbook not found: {actual_path}")
+
+    # Load with data_only=True to get Excel's cached calculated values
+    wb_expected = load_workbook(expected_path, data_only=True)
+    wb_actual = load_workbook(actual_path, data_only=True)
+
+    if sheets_to_compare is None:
+        sheets_to_compare = list(set(wb_expected.sheetnames) | set(wb_actual.sheetnames))
+
+    return [
+        _compare_sheet_formula_values(sheet_name, wb_expected, wb_actual)
+        for sheet_name in sheets_to_compare
+    ]
 
 
 def compare_workbooks(
@@ -152,6 +268,67 @@ def compare_workbooks(
     ]
 
 
+def _compare_sheet_formula_values(sheet_name: str, wb_expected, wb_actual) -> SheetResult:
+    """Compare formula calculated values between two sheets using data_only=True loads."""
+    if sheet_name not in wb_expected.sheetnames:
+        return {
+            "name": sheet_name,
+            "identical": False,
+            "differences": [],
+            "missing_in_expected": True,
+            "missing_in_actual": False,
+        }
+
+    if sheet_name not in wb_actual.sheetnames:
+        return {
+            "name": sheet_name,
+            "identical": False,
+            "differences": [],
+            "missing_in_expected": False,
+            "missing_in_actual": True,
+        }
+
+    ws_expected = wb_expected[sheet_name]
+    ws_actual = wb_actual[sheet_name]
+
+    # Compare only cells that contain calculated formula results
+    differences = []
+
+    # Check for formula cells by looking at both sheets
+    max_row = max(ws_expected.max_row or 1, ws_actual.max_row or 1)
+    max_col = max(ws_expected.max_column or 1, ws_actual.max_column or 1)
+
+    for row in range(1, max_row + 1):
+        for col in range(1, max_col + 1):
+            expected_cell = ws_expected.cell(row=row, column=col)
+            actual_cell = ws_actual.cell(row=row, column=col)
+
+            expected_val = expected_cell.value
+            actual_val = actual_cell.value
+
+            # Focus on cells that likely contained formulas (numeric results)
+            if isinstance(expected_val, (int, float)) or isinstance(
+                actual_val, (int, float)
+            ):
+                if not _values_are_equivalent(expected_val, actual_val):
+                    differences.append(
+                        {
+                            "sheet": sheet_name,
+                            "cell": expected_cell.coordinate,
+                            "expected": expected_val,
+                            "actual": actual_val,
+                        }
+                    )
+
+    return {
+        "name": sheet_name,
+        "identical": len(differences) == 0,
+        "differences": differences,
+        "missing_in_expected": False,
+        "missing_in_actual": False,
+    }
+
+
 def _compare_sheet(sheet_name: str, wb_expected, wb_actual) -> SheetResult:
     """Compare a single sheet between two workbooks."""
     if sheet_name not in wb_expected.sheetnames:
@@ -220,6 +397,7 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
     key_column: str | list[str] = "B",  # Single column or composite key columns
     start_row: int = 15,
     data_only: bool = True,
+    actual_sheet_name: str | None = None,
 ) -> SheetResult:
     """Compare sheet data by matching records via key column(s) rather than row position.
 
@@ -232,6 +410,7 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
                    - Composite key: ["B", "D", "F"] for Trust_Code + Site_Code + Ward_Name
         start_row: First row of data
         data_only: Compare values vs formulas
+        actual_sheet_name: Name of sheet in actual workbook if different from sheet_name
 
     Returns:
         SheetResult with differences between matching records
@@ -248,18 +427,20 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
     wb_expected = load_workbook(expected_path, data_only=data_only)
     wb_actual = load_workbook(actual_path, data_only=data_only)
 
+    actual_sheet = actual_sheet_name or sheet_name
+
     if sheet_name not in wb_expected.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": True,
             "missing_in_actual": False,
         }
 
-    if sheet_name not in wb_actual.sheetnames:
+    if actual_sheet not in wb_actual.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": False,
@@ -267,16 +448,16 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
         }
 
     ws_expected = wb_expected[sheet_name]
-    ws_actual = wb_actual[sheet_name]
+    ws_actual = wb_actual[actual_sheet]
 
     # Build dictionaries mapping key -> row data
     expected_records = _extract_records_by_key(ws_expected, key_column, start_row)
     actual_records = _extract_records_by_key(ws_actual, key_column, start_row)
 
-    differences = _compare_records_by_key(sheet_name, expected_records, actual_records)
+    differences = _compare_records_by_key(actual_sheet, expected_records, actual_records)
 
     return {
-        "name": sheet_name,
+        "name": actual_sheet,
         "identical": len(differences) == 0,
         "differences": differences,
         "missing_in_expected": False,
@@ -368,11 +549,7 @@ def _compare_records_by_key(
 
 
 def compare_data_range(
-    expected_path: Path | str,
-    actual_path: Path | str,
-    sheet_name: str,
-    start_row: int = 15,
-    data_only: bool = True,
+    expected_path: Path | str, actual_path: Path | str, sheet_name: str, **options
 ) -> SheetResult:
     """Compare only the data range of a sheet, ignoring template/control areas.
 
@@ -380,13 +557,18 @@ def compare_data_range(
         expected_path: Path to ground truth workbook
         actual_path: Path to generated workbook
         sheet_name: Name of sheet to compare
-        start_row: First row of data (skip template controls)
-        data_only: Compare values vs formulas
+        **options: Optional parameters including start_row (int), data_only (bool),
+                  actual_sheet_name (str)
 
     Returns:
         SheetResult with differences in data area only
 
     """
+    # Extract options with defaults
+    start_row = options.get("start_row", 15)
+    data_only = options.get("data_only", True)
+    actual_sheet_name = options.get("actual_sheet_name")
+
     expected_path = Path(expected_path)
     actual_path = Path(actual_path)
 
@@ -398,18 +580,20 @@ def compare_data_range(
     wb_expected = load_workbook(expected_path, data_only=data_only)
     wb_actual = load_workbook(actual_path, data_only=data_only)
 
+    actual_sheet = actual_sheet_name or sheet_name
+
     if sheet_name not in wb_expected.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": True,
             "missing_in_actual": False,
         }
 
-    if sheet_name not in wb_actual.sheetnames:
+    if actual_sheet not in wb_actual.sheetnames:
         return {
-            "name": sheet_name,
+            "name": actual_sheet,
             "identical": False,
             "differences": [],
             "missing_in_expected": False,
@@ -417,15 +601,15 @@ def compare_data_range(
         }
 
     ws_expected = wb_expected[sheet_name]
-    ws_actual = wb_actual[sheet_name]
+    ws_actual = wb_actual[actual_sheet]
 
     # Compare only from start_row onwards
     differences = _find_cell_differences_range(
-        sheet_name, ws_expected, ws_actual, start_row
+        actual_sheet, ws_expected, ws_actual, start_row
     )
 
     return {
-        "name": sheet_name,
+        "name": actual_sheet,
         "identical": len(differences) == 0,
         "differences": differences,
         "missing_in_expected": False,
@@ -474,16 +658,58 @@ def _values_are_equivalent(val_expected, val_actual) -> bool:
     True
     >>> _values_are_equivalent(100.1, 100.2)
     False
+    >>> _values_are_equivalent("Oct-25", "2025-10-01 00:00:00")
+    True
+    >>> _values_are_equivalent("Sep-25", "2025-09-26 00:00:00")
+    True
+    >>> _values_are_equivalent("Oct-25", "2025-11-01 00:00:00")
+    False
 
     """
     # Exact match
     if val_expected == val_actual:
         return True
 
-    # Handle template compatibility: None/NULL/NA/"0"/"-" are equivalent for missing values
+    # Handle template compatibility: None/NULL/NA/"0"/"-"
+    # are equivalent for missing values
     missing_vals = {None, "NULL", "NA", "", "0", "-", "nan"}
     if val_expected in missing_vals and val_actual in missing_vals:
         return True
+
+    # Handle date format differences - compare year/month only
+    def extract_year_month(value):
+        """Extract (year, month) tuple from date strings."""
+        # Convert to string if it's a datetime object
+        if hasattr(value, "year") and hasattr(value, "month"):
+            return (value.year, value.month)
+
+        if not isinstance(value, str):
+            value_str = str(value) if value is not None else None
+        else:
+            value_str = value
+
+        if not value_str:
+            return None
+
+        # "Jun-25" format
+        if re.match(r"^[A-Z][a-z]{2}-\d{2}$", value_str):
+            month_name, year_2digit = value_str.split("-")
+            year = 2000 + int(year_2digit)
+            month = datetime.strptime(month_name, "%b").month
+            return (year, month)
+        # "2025-06-01 00:00:00" format
+        if re.match(r"^\d{4}-\d{2}", value_str):
+            parts = value_str.split("-")
+            return (int(parts[0]), int(parts[1]))
+        return None
+
+    try:
+        date1 = extract_year_month(val_expected)
+        date2 = extract_year_month(val_actual)
+        if date1 and date2:
+            return date1 == date2
+    except (ValueError, TypeError):
+        pass
 
     # For numeric comparisons
     try:
@@ -560,6 +786,395 @@ def print_comparison_report(
 
     print()
     print(f"Summary: {identical_sheets}/{total_sheets} sheets identical")
+
+
+def validate_headers(
+    pipeline_file: str | Path,
+    ground_truth_file: str | Path,
+    service_type: str,
+    sheets_to_validate: list[str] | None = None,
+    verbose: bool = False,
+) -> dict[str, dict]:
+    """Validate that sheet headers match between pipeline and ground truth files.
+
+    This function performs CRUCIAL validation to ensure that:
+    1. Header structure is identical
+    2. Column labels match exactly
+    3. Critical cells contain expected values
+
+    Args:
+        pipeline_file: Path to pipeline-generated Excel file
+        ground_truth_file: Path to ground truth Excel file
+        service_type: Service type (inpatient, ae, ambulance)
+        sheets_to_validate: List of sheets to validate (None for all sheets)
+        verbose: Whether to print detailed output
+
+    Returns:
+        dict: Validation results by sheet, with differences if any
+
+    Raises:
+        FileNotFoundError: If either file doesn't exist
+        ValueError: If service_type is not configured
+
+    >>> from pathlib import Path
+    >>> import tempfile
+    >>> from openpyxl import Workbook
+
+    # Test with identical headers (using correct row range for inpatient Trusts sheet)
+    >>> with tempfile.TemporaryDirectory() as tmpdir:
+    ...     pipeline = Path(tmpdir) / "pipeline.xlsx"
+    ...     ground_truth = Path(tmpdir) / "ground_truth.xlsx"
+    ...     wb1 = Workbook()
+    ...     wb1.active.title = "Trusts"
+    ...     wb1["Trusts"]["A10"] = "ICB Code"  # Row 10 is in the header range [10, 14]
+    ...     wb1["Trusts"]["B10"] = "Trust Code"
+    ...     wb1.save(pipeline)
+    ...     wb2 = Workbook()
+    ...     wb2.active.title = "Trusts"
+    ...     wb2["Trusts"]["A10"] = "ICB Code"
+    ...     wb2["Trusts"]["B10"] = "Trust Code"
+    ...     wb2.save(ground_truth)
+    ...     results = validate_headers(pipeline, ground_truth, "inpatient", ["Trusts"])
+    ...     results["Trusts"]["identical"]
+    True
+
+    # Test with different headers
+    >>> with tempfile.TemporaryDirectory() as tmpdir:
+    ...     pipeline = Path(tmpdir) / "pipeline.xlsx"
+    ...     ground_truth = Path(tmpdir) / "ground_truth.xlsx"
+    ...     wb1 = Workbook()
+    ...     wb1.active.title = "Trusts"
+    ...     wb1["Trusts"]["A10"] = "ICB Code"
+    ...     wb1.save(pipeline)
+    ...     wb2 = Workbook()
+    ...     wb2.active.title = "Trusts"
+    ...     wb2["Trusts"]["A10"] = "ICB_Name"  # Different!
+    ...     wb2.save(ground_truth)
+    ...     results = validate_headers(pipeline, ground_truth, "inpatient", ["Trusts"])
+    ...     results["Trusts"]["identical"]
+    False
+
+    """
+    pipeline_path, ground_truth_path = _validate_header_files(
+        pipeline_file, ground_truth_file, service_type
+    )
+
+    wb_pipeline, wb_ground_truth = _load_header_workbooks(
+        pipeline_path, ground_truth_path
+    )
+
+    sheets_to_validate = _determine_sheets_to_validate(
+        sheets_to_validate, wb_pipeline, wb_ground_truth, service_type
+    )
+
+    results = {}
+    header_rows = HEADER_ROWS_BY_SERVICE[service_type]
+
+    config = {
+        "header_rows": header_rows,
+        "verbose": verbose,
+        "service_type": service_type,
+    }
+    for sheet_name in sheets_to_validate:
+        results[sheet_name] = _validate_single_sheet(
+            sheet_name, wb_pipeline, wb_ground_truth, config
+        )
+
+    return results
+
+
+def _validate_header_files(
+    pipeline_file: str | Path, ground_truth_file: str | Path, service_type: str
+) -> tuple[Path, Path]:
+    """Validate input files and paths."""
+    pipeline_path = Path(pipeline_file)
+    ground_truth_path = Path(ground_truth_file)
+
+    if not pipeline_path.exists():
+        raise FileNotFoundError(f"Pipeline file not found: {pipeline_file}")
+    if not ground_truth_path.exists():
+        raise FileNotFoundError(f"Ground truth file not found: {ground_truth_file}")
+    if service_type not in HEADER_ROWS_BY_SERVICE:
+        raise ValueError(f"Unsupported service type: {service_type}")
+
+    return pipeline_path, ground_truth_path
+
+
+def _calculate_formula_value(cell, sheet) -> str | int | float | None:
+    """Calculate the value of a formula cell using cached results when available.
+
+    Args:
+        cell: Openpyxl cell object containing a formula
+        sheet: Openpyxl worksheet object
+
+    Returns:
+        The calculated value of the formula, or None if calculation fails
+
+    """
+    if not cell.data_type == "f" or not isinstance(cell.value, str):
+        return cell.value
+
+    # First, try to get cached result
+    cached_results = get_cached_formula_results(sheet, row=cell.row)
+    if cached_results and cell.coordinate in cached_results:
+        return cached_results[cell.coordinate]
+
+    # Fallback to calculation if no cache available
+    formula = cell.value
+
+    # Handle SUBTOTAL(9,range) - sum of visible cells
+    if "SUBTOTAL(9," in formula:
+        return _calculate_subtotal_formula(formula, sheet)
+
+    # Handle IFERROR formulas
+    elif formula.startswith("=IFERROR("):
+        return _calculate_iferror_formula(formula, sheet)
+
+    # For other formulas, return None (can't calculate)
+    return None
+
+
+def _calculate_subtotal_formula(formula: str, sheet) -> int | None:
+    """Calculate SUBTOTAL(9,range) formula value."""
+    try:
+        # Extract range from formula like "=SUBTOTAL(9,D7:D999)"
+        range_part = formula.split("SUBTOTAL(9,")[1].split(")")[0]
+        col_letter = range_part.split(":")[0][0]  # 'D' from 'D7:D999'
+        start_row = int(range_part.split(":")[0][1:])  # 7 from 'D7:D999'
+        end_row = int(range_part.split(":")[1][1:])  # 999 from 'D7:D999'
+
+        col_idx = ord(col_letter) - ord("A") + 1
+
+        # Calculate the sum (SUBTOTAL(9,...) sums visible cells)
+        total = 0
+        for row in range(start_row, end_row + 1):
+            data_cell = sheet.cell(row=row, column=col_idx)
+            if data_cell.value and isinstance(data_cell.value, (int, float)):
+                # Only sum if row is not hidden (SUBTOTAL behavior)
+                if not sheet.row_dimensions[row].hidden:
+                    total += data_cell.value
+
+        return total if total > 0 else 0
+
+    except (IndexError, ValueError, AttributeError):
+        return None
+
+
+def _calculate_iferror_formula(formula: str, sheet) -> str | float | None:
+    """Calculate IFERROR formula value."""
+    try:
+        # Extract the main expression from IFERROR(expr, fallback)
+        expr_part = formula[9:].split(",", maxsplit=1)[0]
+        # Try to evaluate the expression (very basic handling)
+        if "+" in expr_part and "/" in expr_part:
+            return _evaluate_arithmetic_expression(expr_part, sheet)
+        return None
+    except (IndexError, ValueError, ZeroDivisionError):
+        return "-"
+
+
+def _evaluate_arithmetic_expression(expr: str, sheet) -> str | float:
+    """Evaluate simple arithmetic expressions like (H6+I6)/D6."""
+    # Handle simple arithmetic like (H6+I6)/D6
+    parts = expr.split("/")
+    numerator = parts[0].strip("()")
+    denominator = parts[1].strip("()")
+
+    # Calculate numerator (e.g., "H6+I6")
+    num_total = _sum_cell_references(numerator, sheet)
+
+    # Calculate denominator (e.g., "D6")
+    denom_value = _get_cell_reference_value(denominator.strip(), sheet)
+
+    if denom_value > 0:
+        return num_total / denom_value
+    else:
+        return "-"
+
+
+def _sum_cell_references(cell_refs: str, sheet) -> float:
+    """Sum values from cell references separated by +."""
+    num_parts = cell_refs.split("+")
+    num_total = 0
+    for part in num_parts:
+        part_clean = part.strip()
+        if part_clean:  # Skip empty parts
+            cell_value = _get_cell_reference_value(part_clean, sheet)
+            num_total += cell_value
+    return num_total
+
+
+def _get_cell_reference_value(cell_ref: str, sheet) -> float:
+    """Get numeric value from a cell reference like 'D6'."""
+    if cell_ref:
+        col_letter = cell_ref[0]
+        row_num = int(cell_ref[1:])
+        col_idx = ord(col_letter) - ord("A") + 1
+        cell = sheet.cell(row=row_num, column=col_idx)
+        if cell.value and isinstance(cell.value, (int, float)):
+            return cell.value
+    return 1  # Default fallback value
+
+
+def _load_header_workbooks(pipeline_path: Path, ground_truth_path: Path) -> tuple:
+    """Load workbooks for header validation."""
+    return (
+        load_workbook(pipeline_path, data_only=False),
+        load_workbook(ground_truth_path, data_only=False),
+    )
+
+
+def _determine_sheets_to_validate(
+    sheets_to_validate: list[str] | None, wb_pipeline, wb_ground_truth, service_type: str
+) -> list[str]:
+    """Determine which sheets to validate."""
+    if sheets_to_validate is None:
+        common_sheets = list(
+            set(wb_pipeline.sheetnames) & set(wb_ground_truth.sheetnames)
+        )
+    else:
+        common_sheets = sheets_to_validate
+
+    # Exclude sheets that contain template-specific content
+    excluded_sheets = HEADER_VALIDATION_EXCLUDED_SHEETS.get(service_type, [])
+    return [sheet for sheet in common_sheets if sheet not in excluded_sheets]
+
+
+def _validate_single_sheet(
+    sheet_name: str,
+    wb_pipeline,
+    wb_ground_truth,
+    config: dict,
+) -> dict:
+    """Validate a single sheet's headers."""
+    # Extract config parameters
+    header_rows = config["header_rows"]
+    verbose = config["verbose"]
+    service_type = config["service_type"]
+
+    # Check if sheet exists in both workbooks
+    sheet_exists_result = _check_sheet_existence(sheet_name, wb_pipeline, wb_ground_truth)
+    if sheet_exists_result is not None:
+        return sheet_exists_result
+
+    # Compare headers
+    comparison_result = _compare_sheet_headers(
+        sheet_name, wb_pipeline, wb_ground_truth, header_rows, service_type
+    )
+
+    # Add verbose output if requested
+    if verbose:
+        _print_verbose_validation(sheet_name, comparison_result)
+
+    return comparison_result
+
+
+def _check_sheet_existence(sheet_name: str, wb_pipeline, wb_ground_truth) -> dict | None:
+    """Check if sheet exists in both workbooks."""
+    if sheet_name not in wb_pipeline.sheetnames:
+        return {
+            "identical": False,
+            "differences": [{"type": "missing", "message": "Sheet missing in pipeline"}],
+            "critical_differences": [],
+        }
+    if sheet_name not in wb_ground_truth.sheetnames:
+        return {
+            "identical": False,
+            "differences": [
+                {"type": "missing", "message": "Sheet missing in ground truth"}
+            ],
+            "critical_differences": [],
+        }
+    return None
+
+
+def _compare_sheet_headers(
+    sheet_name: str, wb_pipeline, wb_ground_truth, header_rows: int, service_type: str
+) -> dict:
+    """Compare headers between pipeline and ground truth sheets."""
+    sheet_pipeline = wb_pipeline[sheet_name]
+    sheet_ground_truth = wb_ground_truth[sheet_name]
+
+    all_differences = []
+    critical_differences = []
+
+    # Use the minimum column count to avoid out-of-bounds errors
+    # when comparing workbooks with different column structures
+    max_col = min(sheet_pipeline.max_column, sheet_ground_truth.max_column)
+
+    # Get the precise row range for this sheet and service type
+    row_range = HEADER_ROW_RANGES_BY_SERVICE.get(service_type, {}).get(sheet_name)
+    if row_range:
+        start_row, end_row = row_range
+    else:
+        # Fallback to original behavior for backward compatibility
+        start_row = 1
+        end_row = header_rows
+
+    for row in range(start_row, end_row + 1):
+        for col in range(1, max_col + 1):
+            pipeline_cell = sheet_pipeline.cell(row=row, column=col)
+            ground_truth_cell = sheet_ground_truth.cell(row=row, column=col)
+
+            pipeline_val = pipeline_cell.value
+            ground_truth_val = ground_truth_cell.value
+
+            # Handle formula cells - calculate expected values for comparison
+            if pipeline_cell.data_type == "f" or ground_truth_cell.data_type == "f":
+                # If either cell contains a formula, calculate the expected value
+                expected_pipeline_val = (
+                    _calculate_formula_value(pipeline_cell, sheet_pipeline)
+                    if pipeline_cell.data_type == "f"
+                    else pipeline_val
+                )
+                expected_ground_truth_val = (
+                    _calculate_formula_value(ground_truth_cell, sheet_ground_truth)
+                    if ground_truth_cell.data_type == "f"
+                    else ground_truth_val
+                )
+
+                pipeline_val = expected_pipeline_val
+                ground_truth_val = expected_ground_truth_val
+
+            if not _values_are_equivalent(pipeline_val, ground_truth_val):
+                cell_ref = f"{get_column_letter(col)}{row}"
+                diff = {
+                    "cell": cell_ref,
+                    "pipeline": pipeline_val,
+                    "ground_truth": ground_truth_val,
+                    "row": row,
+                    "col": col,
+                }
+                all_differences.append(diff)
+
+                if cell_ref in CRITICAL_HEADER_CELLS.get(sheet_name, []):
+                    critical_differences.append(diff)
+
+    return {
+        "identical": len(all_differences) == 0,
+        "differences": all_differences,
+        "critical_differences": critical_differences,
+        "total_differences": len(all_differences),
+        "critical_difference_count": len(critical_differences),
+    }
+
+
+def _print_verbose_validation(sheet_name: str, comparison_result: dict) -> None:
+    """Print verbose validation output."""
+    if comparison_result["identical"]:
+        print(f"✅ Sheet {sheet_name}: Headers are identical")
+    else:
+        print(
+            f"❌ Sheet {sheet_name}: Found {len(comparison_result['differences'])} "
+            f"differences ({len(comparison_result['critical_differences'])} critical)"
+        )
+        if comparison_result["critical_differences"]:
+            print("  Critical differences:")
+            for diff in comparison_result["critical_differences"][:3]:
+                print(
+                    f"    Cell {diff['cell']}: Pipeline='{diff['pipeline']}', "
+                    f"GroundTruth='{diff['ground_truth']}'"
+                )
 
 
 def find_matching_ground_truth(output_path: Path, ground_truth_dir: Path) -> Path | None:
@@ -700,7 +1315,7 @@ def extract_service_type(filename: str) -> str | None:
         return "inpatient"
 
     # Check for A&E patterns
-    if any(pattern in filename_lower for pattern in ["_ae_", "fft_ae"]):
+    if any(pattern in filename_lower for pattern in ["_ae_", "fft_ae", "-ae-"]):
         return "ae"
 
     # Check for ambulance patterns
@@ -708,3 +1323,63 @@ def extract_service_type(filename: str) -> str | None:
         return "ambulance"
 
     return None
+
+
+def print_header_validation_report(
+    header_results: dict[str, dict], max_diffs_per_sheet: int = 10
+) -> None:
+    """Print a detailed header validation report.
+
+    Provides comprehensive information about header differences between pipeline
+    output and ground truth files, showing exactly which cells differ and what
+    the differences are.
+
+    Args:
+        header_results: Results from validate_headers() function
+        max_diffs_per_sheet: Maximum differences to show per sheet
+
+    """
+    total_sheets = len(header_results)
+    identical_sheets = sum(1 for r in header_results.values() if r["identical"])
+    total_differences = sum(r["total_differences"] for r in header_results.values())
+    total_critical = sum(r["critical_difference_count"] for r in header_results.values())
+
+    print("===========================================================")
+    print("HEADER VALIDATION REPORT")
+    print("===========================================================")
+
+    for sheet_name, result in header_results.items():
+        if result["identical"]:
+            print(f"Sheet: {sheet_name} ✅ (identical)")
+        else:
+            print(
+                f"Sheet: {sheet_name} ❌ ("
+                f"{result['total_differences']} differences, "
+                f"{result['critical_difference_count']} critical)"
+            )
+
+            # Show all differences with details
+            for diff in result["differences"][:max_diffs_per_sheet]:
+                pipeline_val = (
+                    diff["pipeline"] if diff["pipeline"] is not None else "None"
+                )
+                ground_truth_val = (
+                    diff["ground_truth"] if diff["ground_truth"] is not None else "None"
+                )
+                print(
+                    f"  - Cell {diff['cell']}: "
+                    f"pipeline '{pipeline_val}', "
+                    f"ground truth '{ground_truth_val}'"
+                )
+
+            if len(result["differences"]) > max_diffs_per_sheet:
+                print(
+                    f"  ... and "
+                    f"{len(result['differences']) - max_diffs_per_sheet} "
+                    f"more differences"
+                )
+
+    print()
+    print(f"Summary: {identical_sheets}/{total_sheets} sheets have matching headers")
+    if total_differences > 0:
+        print(f"Total differences found: {total_differences} ({total_critical} critical)")
