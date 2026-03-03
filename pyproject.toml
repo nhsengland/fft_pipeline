@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fft_pipeline"
+version = "0.1.0"
+description = "FFT Response Processing ETL Pipeline"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas>=2.3.3",                # Powerful data structures for data analysis, time series, and statistics
+    "openpyxl>=3.1.5",              # A Python library to read/write Excel 2010 xlsx/xlsm files
+    "python-fasthtml>=0.12.36",     # The fastest way to create an HTML app
+    "python-multipart>=0.0.22",     # Fix CVE: Path Traversal vulnerability in file uploads (0.0.20 vulnerable)
+    "oletools>=0.60.2",             # Tools to analyze OLE files (Excel VBA extraction)
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.14.8",                 # Linter / Formatter
+    "ty>=0.0.1a32",                 # Type checker
+    "ipython>=9.10.0",              # Interactive Python shell
+]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 90
+target-version = "py313"
+exclude = [""]
+
+[tool.ruff.lint]
+# Enable rule sets:
+# E = pycodestyle errors
+# W = pycodestyle warnings
+# F = pyflakes (undefined names, unused imports, etc.)
+# I = isort (import sorting)
+# D = pydocstyle (docstring conventions)
+# UP = pyupgrade (modernise syntax)
+# PL = pylint rules
+select = ["E", "W", "F", "I", "D", "UP", "PL"]
+ignore = ["D203", "D213"]  # Ignore conflicting docstring rules
+exclude = [""]
+
+[tool.ruff.lint.isort]
+# isort configuration
+force-single-line = false
+combine-as-imports = true
+
+[tool.ruff.format]
+# Black-compatible formatting (default settings)
+quote-style = "double"
+indent-style = "space"
+exclude = ["*.ipynb"]
+
+[tool.ty.src]
+exclude = ["tests"]
+
+[tool.ty.rules]
+invalid-argument-type = "warn"
+invalid-key = "warn"
+unresolved-reference = "warn"
+invalid-assignment = "warn"
