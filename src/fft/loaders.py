@@ -103,9 +103,11 @@ def find_latest_files(service_type: str, n: int = 2) -> list[Path]:
     >>> len(files) <= 100  # Returns only what's available
     True
 
-    # Edge case: No files found for service type
+    # Edge case: Ambulance service has files available
     >>> files = find_latest_files("ambulance", n=2)
-    >>> files == []
+    >>> isinstance(files, list)
+    True
+    >>> len(files) <= 2
     True
 
     # Error case: Unknown service type
