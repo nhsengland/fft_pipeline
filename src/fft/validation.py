@@ -56,13 +56,17 @@ def compare_in_memory_cached_formulas(
 
     Returns:
         List of SheetResult dicts, one per sheet compared
+
     """
     if sheets_to_compare is None:
         sheets_to_compare = list(set(wb_expected.sheetnames) | set(wb_actual.sheetnames))
 
     results = []
     for sheet_name in sheets_to_compare:
-        if sheet_name not in wb_expected.sheetnames or sheet_name not in wb_actual.sheetnames:
+        if (
+            sheet_name not in wb_expected.sheetnames
+            or sheet_name not in wb_actual.sheetnames
+        ):
             continue
 
         ws_expected = wb_expected[sheet_name]
@@ -79,20 +83,24 @@ def compare_in_memory_cached_formulas(
             actual_val = actual_cache.get(coord)
 
             if not _values_are_equivalent(expected_val, actual_val):
-                differences.append({
-                    "sheet": sheet_name,
-                    "cell": coord,
-                    "expected": expected_val,
-                    "actual": actual_val,
-                })
+                differences.append(
+                    {
+                        "sheet": sheet_name,
+                        "cell": coord,
+                        "expected": expected_val,
+                        "actual": actual_val,
+                    }
+                )
 
-        results.append({
-            "name": sheet_name,
-            "identical": len(differences) == 0,
-            "differences": differences,
-            "missing_in_expected": False,
-            "missing_in_actual": False,
-        })
+        results.append(
+            {
+                "name": sheet_name,
+                "identical": len(differences) == 0,
+                "differences": differences,
+                "missing_in_expected": False,
+                "missing_in_actual": False,
+            }
+        )
 
     return results
 
@@ -118,6 +126,7 @@ def compare_formula_results(
 
     Raises:
         FileNotFoundError: If either workbook doesn't exist
+
     """
     expected_path = Path(expected_path)
     actual_path = Path(actual_path)
@@ -298,14 +307,18 @@ def _compare_sheet_formula_values(sheet_name: str, wb_expected, wb_actual) -> Sh
             actual_val = actual_cell.value
 
             # Focus on cells that likely contained formulas (numeric results)
-            if (isinstance(expected_val, (int, float)) or isinstance(actual_val, (int, float))):
+            if isinstance(expected_val, (int, float)) or isinstance(
+                actual_val, (int, float)
+            ):
                 if not _values_are_equivalent(expected_val, actual_val):
-                    differences.append({
-                        "sheet": sheet_name,
-                        "cell": expected_cell.coordinate,
-                        "expected": expected_val,
-                        "actual": actual_val,
-                    })
+                    differences.append(
+                        {
+                            "sheet": sheet_name,
+                            "cell": expected_cell.coordinate,
+                            "expected": expected_val,
+                            "actual": actual_val,
+                        }
+                    )
 
     return {
         "name": sheet_name,

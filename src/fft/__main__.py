@@ -265,8 +265,11 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     # Step 13: Write England totals
     logger.info("Writing England totals...")
     write_england_totals(
-        wb, service_type, national_df, org_counts,
-        {'suppressed_data': suppressed_data, 'all_level_data': cleaned_data}
+        wb,
+        service_type,
+        national_df,
+        org_counts,
+        {"suppressed_data": suppressed_data, "all_level_data": cleaned_data},
     )
 
     # Step 14: Write BS lookup data (use unsuppressed ward data for lookups)
@@ -557,7 +560,9 @@ def main():
     # Determine service type from args
     service_type: str | None = None
     selected_service_flags = [
-        (flag, stype) for flag, stype in SERVICE_TYPES.items() if getattr(args, flag, False)
+        (flag, stype)
+        for flag, stype in SERVICE_TYPES.items()
+        if getattr(args, flag, False)
     ]
     if len(selected_service_flags) > 1:
         parser.error("Multiple service types specified; please choose exactly one.")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment
 from openpyxl.workbook import Workbook
 
 from fft.config import (
@@ -15,6 +16,7 @@ from fft.config import (
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
+    PERCENTAGE_NUMBER_FORMAT,
     PERIOD_LABEL_CONFIG,
     SPECIALITY_COLS,
     SUMMARY_SHEET_CONFIG,
@@ -155,6 +157,8 @@ def write_dataframe_to_sheet(
             sheet.cell(row=row_idx, column=col_idx).value = display_value
 
 
+
+
 # %%
 def write_bs_lookup_data(
     workbook: Workbook, ward_df: pd.DataFrame, service_type: str
@@ -163,9 +167,14 @@ def write_bs_lookup_data(
 
     Writes reference lists and linked lists used by VBA macros for filtering.
 
-    The BS sheet has two main sections:
+    The BS sheet has three main sections:
     1. Reference Lists (U:Z) - Full hierarchy from ward data
-    2. Linked Lists (AE+) - Deduplicated pairs, each column sorted independently
+    2. Region Reference (O:P, R:S) - ICB data for region-level dropdown support
+    (if configured)
+    3. Linked Lists (AA+) - Deduplicated pairs, each column sorted independently
+
+    For A&E service type, ICBs are treated as "regions" for VBA compatibility.
+    The VBA dropdown cascade works: Region(ICB) → Trust → Site
 
     The VBA logic for linked lists:
     - Columns are grouped into pairs (e.g., Trust Code + Trust Name)
@@ -255,7 +264,38 @@ def write_bs_lookup_data(
         for col_idx, value in enumerate(row, start=ref_start_col):
             sheet.cell(row=row_idx, column=col_idx).value = value
 
-    # 2. Write Linked Lists (dedupe pairs, sort each column independently)
+    # 2. Write Region Reference Data (if configured)
+    if "region_reference" in config:
+        region_config = config["region_reference"]
+        region_start_col = region_config["start_col"]
+        region_start_row = region_config["start_row"]
+        region_pairs = region_config["pairs"]
+
+        # For A&E, treat ICBs as regions by using ICB data for region reference
+        col_offset = 0
+        for pair in region_pairs:
+            # Use unique ICB pairs from the data
+            unique_pair = ward_df[pair].drop_duplicates()
+
+            # Sort pairs together to maintain code-to-name relationship
+            if len(pair) > 1:
+                # Sort by first column (typically the code) to maintain pairing
+                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+            else:
+                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+
+            # Write each column from the sorted pairs
+            for pair_col_idx, col_name in enumerate(pair):
+                sorted_values = sorted_pair[col_name]
+
+                for row_idx, value in enumerate(sorted_values, start=region_start_row):
+                    sheet.cell(
+                        row=row_idx, column=region_start_col + col_offset + pair_col_idx
+                    ).value = value
+
+            col_offset += len(pair)
+
+    # 3. Write Linked Lists (dedupe pairs, sort pairs together maintaining relationships)
     for level, level_config in config["linked_lists"].items():
         start_col = level_config["start_col"]
         pairs = level_config["pairs"]
@@ -265,15 +305,16 @@ def write_bs_lookup_data(
             # Deduplicate the pair together
             unique_pair = ward_df[pair].drop_duplicates()
 
-            # Sort and write each column independently
+            # Sort pairs together to maintain relationships (e.g., code-to-name pairing)
+            if len(pair) > 1:
+                # Sort by first column (typically the code) to maintain pairing
+                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+            else:
+                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+
+            # Write each column from the sorted pairs
             for pair_col_idx, col_name in enumerate(pair):
-                sorted_values = (
-                    unique_pair[col_name]
-                    .drop_duplicates()
-                    .astype(str)  # Convert to string to handle mixed types
-                    .sort_values()
-                    .reset_index(drop=True)
-                )
+                sorted_values = sorted_pair[col_name]
 
                 for row_idx, value in enumerate(sorted_values, start=2):
                     sheet.cell(
@@ -353,6 +394,14 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
 
         sheet = workbook[sheet_name]
         sheet[cell].value = template.format(period=fft_period)
+
+        # FIXME: This is a temporary fix
+        # Fix A&E Notes sheet rows 39-40 alignment
+        if service_type == "ae" and sheet_name == "Notes":
+            for row in [39, 40]:
+                for col in range(1, sheet.max_column + 1):
+                    cell = sheet.cell(row=row, column=col)
+                    cell.alignment = Alignment(horizontal="left", wrap_text=True)
 
 
 # %%
@@ -540,9 +589,6 @@ def _get_data_from_level(
 
     return total_row, nhs_row
 
-    return total_row, nhs_row
-
-
 def _get_count_columns(level_df: pd.DataFrame, service_type: str = "inpatient") -> list:
     """Get list of count columns for aggregation."""
     return get_count_columns_for_service(service_type)
@@ -706,6 +752,7 @@ def get_cached_formula_results(sheet, row: int = None) -> dict:
         Dict with cell coordinates as keys and calculated values as values.
         If row specified, returns only results for that row.
         If no cached results exist, returns empty dict.
+
     """
     if not hasattr(sheet, "_fft_cached_formulas"):
         return {}
@@ -732,6 +779,7 @@ def _cache_all_formula_results(workbook: Workbook) -> None:
 
     Note:
         Results are stored in sheet._fft_cached_formulas[row][coordinate] format.
+
     """
     for sheet in workbook.worksheets:
         sheet._fft_cached_formulas = {}
@@ -789,6 +837,7 @@ def _calculate_formula_result(sheet, cell):
 
     Returns:
         Calculated result or None if calculation fails
+
     """
     formula = cell.value
 
@@ -832,11 +881,11 @@ def _calculate_iferror_formula(sheet, cell, formula: str):
     paren_count = 0
     split_pos = -1
     for i, char in enumerate(inner_expr):
-        if char == '(':
+        if char == "(":
             paren_count += 1
-        elif char == ')':
+        elif char == ")":
             paren_count -= 1
-        elif char == ',' and paren_count == 0:
+        elif char == "," and paren_count == 0:
             split_pos = i
             break
 
@@ -844,14 +893,14 @@ def _calculate_iferror_formula(sheet, cell, formula: str):
         return None
 
     main_expr = inner_expr[:split_pos].strip()
-    fallback = inner_expr[split_pos+1:].strip().replace('"', '')
+    fallback = inner_expr[split_pos + 1 :].strip().replace('"', "")
 
     try:
         # Handle division expressions like (G14+H14)/SUM(G14:L14)
         if "/" in main_expr:
-            div_pos = main_expr.rfind('/')  # Find last division operator
+            div_pos = main_expr.rfind("/")  # Find last division operator
             numerator_part = main_expr[:div_pos].strip()
-            denominator_part = main_expr[div_pos+1:].strip()
+            denominator_part = main_expr[div_pos + 1 :].strip()
 
             # Calculate numerator and denominator
             numerator = _evaluate_expression(sheet, numerator_part)
@@ -870,16 +919,16 @@ def _calculate_iferror_formula(sheet, cell, formula: str):
 
 
 def _evaluate_expression(sheet, expression: str):
-    """Evaluate complex expressions including cell references, additions, and functions."""
+    """Evaluate complex expressions incl. cell references, additions, and functions."""
     expression = expression.strip()
 
     # Handle parentheses by removing outer ones if they enclose the entire expression
     if expression.startswith("(") and expression.endswith(")"):
         paren_count = 0
         for i, char in enumerate(expression):
-            if char == '(':
+            if char == "(":
                 paren_count += 1
-            elif char == ')':
+            elif char == ")":
                 paren_count -= 1
                 if paren_count == 0 and i == len(expression) - 1:
                     # Outer parentheses enclose entire expression
@@ -942,8 +991,6 @@ def _evaluate_sum_range(sheet, range_expr: str):
     return total
 
 
-
-
 # %%
 def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     """Apply percentage formatting (0%) to percentage columns.
@@ -963,7 +1010,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     >>> wb['ICB'].cell(row=15, column=5).value = 0.95
     >>> format_percentage_columns(wb, 'inpatient')
     >>> wb['ICB'].cell(row=15, column=5).number_format
-    '0.0000%'
+    '0%'
 
     # Edge case: Missing sheet in workbook (should skip gracefully)
     >>> from src.fft.config import PERCENTAGE_COLUMN_CONFIG
@@ -976,7 +1023,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
     >>> wb['ICB'].cell(row=16, column=5).value = "text"
     >>> format_percentage_columns(wb, 'inpatient')  # Should still format other cells
     >>> wb['ICB'].cell(row=15, column=5).number_format  # Verify previous cell formatting
-    '0.0000%'
+    '0%'
 
     # Error case: Unknown service type
     >>> format_percentage_columns(wb, 'unknown')
@@ -1001,7 +1048,7 @@ def format_percentage_columns(workbook: Workbook, service_type: str) -> None:
             for row in range(data_start_row, sheet.max_row + 1):
                 cell = sheet.cell(row=row, column=col_idx)
                 if cell.value is not None and cell.value != "*":
-                    cell.number_format = "0.0000%"
+                    cell.number_format = PERCENTAGE_NUMBER_FORMAT
 
 
 # %%

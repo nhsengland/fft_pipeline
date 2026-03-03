@@ -7,9 +7,6 @@ from fft.config import AGGREGATION_COLUMNS, MODE_COLS, SUPPRESSION_THRESHOLD
 # Constants for suppression logic
 SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
 
-# Constants for suppression logic
-SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
-
 
 # %%
 def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
@@ -142,8 +139,16 @@ def _get_ward_sorted_indices(df: pd.DataFrame) -> pd.Index:
     df_temp = df.copy()
 
     # Use specialty text directly for sorting (VBA sorts alphabetically)
-    df_temp["_spec1_text"] = df_temp.get("First Speciality", "").astype(str).fillna("")
-    df_temp["_spec2_text"] = df_temp.get("Second Speciality", "").astype(str).fillna("")
+    df_temp["_spec1_text"] = (
+        (df_temp["First Speciality"] if "First Speciality" in df_temp.columns else "")
+        .astype(str)
+        .fillna("")
+    )
+    df_temp["_spec2_text"] = (
+        (df_temp["Second Speciality"] if "Second Speciality" in df_temp.columns else "")
+        .astype(str)
+        .fillna("")
+    )
 
     # Sort to match VBA tie-breaking: Total Responses → First
     # Specialty → Second Specialty → Ward_Name

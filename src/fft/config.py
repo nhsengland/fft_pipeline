@@ -303,12 +303,13 @@ class LinkedListConfig(TypedDict):
     pairs: list[list[str]]
 
 
-class BSSheetServiceConfig(TypedDict):
+class BSSheetServiceConfig(TypedDict, total=False):
     """Type definition for BS sheet service configuration."""
 
     reference_list_start_col: int
     reference_list_start_row: int
     reference_columns: list[str]
+    region_reference: LinkedListConfig  # Optional for services that need region dropdown
     linked_lists: dict[str, LinkedListConfig]
 
 
@@ -350,10 +351,22 @@ BS_SHEET_CONFIG: dict[str, BSSheetServiceConfig] = {
             "Site_Code",
             "Site_Name",
         ],
+        "region_reference": {
+            "start_col": 15,  # Column O
+            "start_row": 2,
+            "pairs": [["ICB_Code", "ICB_Name"]],
+        },
         "linked_lists": {
-            "trusts": {"start_col": 31, "pairs": [["Trust_Code", "Trust_Name"]]},
+            "regions": {
+                "start_col": 18,
+                "pairs": [["ICB_Code", "ICB_Name"]],
+            },  # Column R-S
+            "trusts": {
+                "start_col": 27,
+                "pairs": [["Trust_Code", "Trust_Name"]],
+            },  # Column AA-AB
             "sites": {
-                "start_col": 34,
+                "start_col": 30,  # Column AD-AG
                 "pairs": [["Trust_Code", "Trust_Name"], ["Site_Code", "Site_Name"]],
             },
         },
@@ -390,6 +403,9 @@ PERCENTAGE_COLUMN_CONFIG: dict[str, dict[str, list[int]]] = {
     "inpatient": {**_pct_base, "Wards": [9, 10]},
     "ae": _pct_base,
 }
+
+# Percentage formatting configuration
+PERCENTAGE_NUMBER_FORMAT = "0%"
 
 PROCESSING_LEVELS = {
     "inpatient": {
