@@ -42,6 +42,20 @@ def extract_all_formulas(input_file, output_dir, verbose=False):
         input_path = Path(input_file)
         output_path = Path(output_dir)
 
+        # Define allowed input directory
+        script_dir = Path(__file__).parent
+        allowed_dir = (script_dir / "data" / "inputs" / "suppression_files").resolve()
+
+        # Validate input path is within allowed directory
+        try:
+            resolved_input = input_path.resolve()
+            # Check if the resolved path is within the allowed directory
+            resolved_input.relative_to(allowed_dir)
+        except (ValueError, OSError):
+            print(f"❌ Error: Input file must be within '{allowed_dir.relative_to(script_dir)}' directory.")
+            print(f"Provided path resolves to: {resolved_input}")
+            return False
+
         if not input_path.exists():
             print(f"❌ Error: Input file '{input_file}' not found.")
             return False
@@ -167,7 +181,7 @@ def main():
     )
 
     parser.add_argument(
-        "input_file", help="Path to the Excel workbook containing formulas"
+        "input_file", help="Path to the Excel workbook containing formulas (must be within data/inputs/suppression_files/)"
     )
 
     parser.add_argument(
