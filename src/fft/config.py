@@ -626,7 +626,15 @@ SUMMARY_COLUMNS = {
     },
 }
 
-ENGLAND_ROWS_SKIP_COLUMNS = {"ICB": 2, "Trusts": 3, "Sites": 5, "Wards": 6, "PTS ICB": 2, "PTS Org": 3, "Mode Org": 3}
+ENGLAND_ROWS_SKIP_COLUMNS = {
+    "ICB": 2,
+    "Trusts": 3,
+    "Sites": 5,
+    "Wards": 6,
+    "PTS ICB": 2,
+    "PTS Org": 3,
+    "Mode Org": 3,
+}
 
 HEADER_ROW_RANGES_BY_SERVICE = {
     "inpatient": {s: [10, 14] for s in ("ICB", "Trusts", "Sites", "Wards")},
