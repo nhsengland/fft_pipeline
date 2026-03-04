@@ -8,6 +8,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 from openpyxl.workbook import Workbook
+from openpyxl.worksheet.merge import MergedCell
 
 from fft.config import (
     BS_SHEET_CONFIG,
@@ -1271,26 +1272,21 @@ def write_summary_sheet(
     # Helper function to safely write to potentially merged cells
     def safe_write_cell(sheet, row, col, value):
         """Write to cell, handling merged cells by writing to top-left cell."""
-        try:
-            cell = sheet.cell(row=row, column=col)
-            if hasattr(cell, 'coordinate') and str(type(cell)) == "<class 'openpyxl.worksheet.merge.MergedCell'>":
-                # Find the top-left cell of the merged range
-                for merged_range in sheet.merged_cells.ranges:
-                    if cell.coordinate in merged_range:
-                        top_left_cell = sheet.cell(row=merged_range.min_row, column=merged_range.min_col)
-                        top_left_cell.value = value
-                        return
-            cell.value = value
-        except AttributeError:
-            # If it's a MergedCell, find the top-left cell
+        cell = sheet.cell(row=row, column=col)
+
+        # Check if this is a merged cell
+        if isinstance(cell, MergedCell):
+            # Find the merged range containing this cell
             for merged_range in sheet.merged_cells.ranges:
                 if (merged_range.min_row <= row <= merged_range.max_row and
                     merged_range.min_col <= col <= merged_range.max_col):
+                    # Write to the top-left cell of the merged range
                     top_left_cell = sheet.cell(row=merged_range.min_row, column=merged_range.min_col)
                     top_left_cell.value = value
                     return
-            # If not found in any merged range, just try regular assignment
-            sheet.cell(row=row, column=col).value = value
+
+        # Regular cell - write directly
+        cell.value = value
     # Write period headers
     period_row = config["period_row"]
     for data_key, col in config["cols"].items():
