@@ -31,11 +31,14 @@ from fasthtml.common import (
 )
 
 from fft.config import (
+    COLUMN_MAPS,
     FILE_PATTERNS,
     MONTH_ABBREV,
+    OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     RAW_DIR,
     SERVICE_TYPES,
+    TEMPLATE_CONFIG,
 )
 
 # Constants for UI
@@ -647,6 +650,38 @@ def get_months(service_type: str) -> list[str]:
     return sorted(months, reverse=True)
 
 
+def validate_service_implementation(service_type: str) -> tuple[bool, list[str]]:
+    """Validate that a service type is fully implemented.
+
+    Args:
+        service_type: The service name (e.g., "inpatient", "ae", "ambulance")
+
+    Returns:
+        tuple: (is_complete, missing_components)
+    """
+    missing = []
+
+    # Check required configuration components (configs use service_type as key)
+    if service_type not in COLUMN_MAPS:
+        missing.append("COLUMN_MAPS configuration")
+
+    if service_type not in OUTPUT_COLUMNS:
+        missing.append("OUTPUT_COLUMNS configuration")
+
+    if service_type not in TEMPLATE_CONFIG:
+        missing.append("TEMPLATE_CONFIG configuration")
+
+    # Check template file exists
+    if service_type in TEMPLATE_CONFIG:
+        template_file = TEMPLATE_CONFIG[service_type]["template_file"]
+        # Go up from /src/fft/app/server.py to project root
+        template_path = Path(__file__).parent.parent.parent.parent / "data" / "inputs" / "templates" / template_file
+        if not template_path.exists():
+            missing.append(f"Template file: {template_file}")
+
+    return len(missing) == 0, missing
+
+
 def update_progress(progress: int, stage: str, message: str):
     """Update the global progress state."""
     pipeline_status.update({"progress": progress, "stage": stage, "message": message})
@@ -669,6 +704,16 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
     }
 
     try:
+        # Validate service implementation before running
+        is_complete, missing_components = validate_service_implementation(service)
+        if not is_complete:
+            error_msg = f"Cannot run {service} pipeline - missing implementation components:\n"
+            error_msg += "\n".join(f"• {component}" for component in missing_components)
+            error_msg += f"\n\n{service.title()} pipeline is not yet fully implemented."
+
+            update_progress(100, "Failed", "Service not fully implemented")
+            pipeline_status.update({"running": False, "success": False, "logs": [error_msg]})
+            return False, error_msg
         flag = [k for k, v in SERVICE_TYPES.items() if v == service][0]
         cmd = ["uv", "run", "python", "-m", "fft", f"--{flag}"]
         if month and month != "all":
@@ -690,8 +735,23 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
 
         update_progress(75, "Finishing", "Finalizing output...")
 
-        success = result.returncode == 0
-        output = result.stdout if success else (result.stderr or result.stdout)
+        # Enhanced error detection: check both return code and log content
+        basic_success = result.returncode == 0
+        output = result.stdout if result.stdout else (result.stderr if result.stderr else "No output captured.")
+
+        # Analyze output for error patterns even if return code is 0
+        error_patterns = [
+            "Failed to process",
+            "✗ Failed to process",
+            "KeyError:",
+            "Pipeline failed",
+            "✗ Pipeline failed",
+            "All .* files failed to process",
+            "Pipeline completed with .* failures"
+        ]
+
+        has_errors = any(re.search(pattern, output, re.IGNORECASE) for pattern in error_patterns)
+        success = basic_success and not has_errors
 
         # Store logs for final display
         pipeline_status["logs"] = [output] if output else ["No output captured."]
@@ -699,8 +759,11 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         # Complete
         if success:
             update_progress(100, "Complete", "Pipeline completed successfully!")
+        elif not basic_success:
+            update_progress(100, "Failed", "Pipeline execution failed with errors")
         else:
-            update_progress(100, "Failed", "Pipeline execution failed")
+            # Return code was 0 but we detected errors in output
+            update_progress(100, "Failed", "Pipeline completed with processing errors")
 
         pipeline_status.update({"running": False, "success": success})
 
@@ -781,7 +844,7 @@ def progress_display():
 
 # --- Components ---
 def service_select():
-    """Create service type selection dropdown."""
+    """Create service type selection dropdown with implementation status."""
     opts = [
         Option(
             "-- Select service type --",
@@ -790,7 +853,17 @@ def service_select():
             selected=True,
         )
     ]
-    opts += [Option(name.title(), value=name) for _, name in SERVICE_TYPES.items()]
+
+    # Add services with status indicators
+    for _, service_name in SERVICE_TYPES.items():
+        is_complete, _ = validate_service_implementation(service_name)
+        status_icon = "✓" if is_complete else "⚠"
+        display_name = f"{status_icon} {service_name.title()}"
+        if not is_complete:
+            display_name += " (Incomplete)"
+
+        opts.append(Option(display_name, value=service_name))
+
     return Select(
         *opts,
         name="service",
@@ -922,9 +995,9 @@ def get():
                     Label("Service Type", for_="service"),
                     service_select(),
                     Div(
-                        "Choose the NHS service type to process",
+                        "Choose the NHS service type to process. Services marked with ✓ are ready to use. Services marked with ⚠ are incomplete.",
                         id="service-help",
-                        cls="visually-hidden",
+                        style="font-size: 0.875rem; color: var(--muted); margin-top: 0.25rem;",
                     ),
                     cls="field",
                 ),
@@ -1072,6 +1145,17 @@ async def post(service: str, month: str):
     """Handle pipeline execution request."""
     if not service:
         return status_box(False, "Please select a service type")
+
+    # Validate service implementation before starting
+    is_complete, missing_components = validate_service_implementation(service)
+    if not is_complete:
+        error_msg = f"Cannot run {service} pipeline - missing implementation:\n"
+        error_msg += "\n".join(f"• {component}" for component in missing_components)
+        return status_box(
+            False,
+            f"{service.title()} pipeline not ready",
+            [error_msg + f"\n\nPlease select a fully implemented service (marked with ✓)"]
+        )
 
     # Start the pipeline asynchronously so progress can be seen
     def run_pipeline_thread():
