@@ -100,7 +100,7 @@ def write_dataframe_to_sheet(
     sheet_name: str,
     start_row: int,
     start_col: int = 1,
-    service_type: str = None,
+    service_type: str | None = None,
 ) -> None:
     """Write DataFrame contents to a specific sheet location.
 
