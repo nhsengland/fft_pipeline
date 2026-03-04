@@ -42,7 +42,6 @@ def extract_vba_macros(input_file, output_dir, verbose=False):
             print(f"Error: Input file must be within '{allowed_dir.relative_to(script_dir)}' directory.")
             print(f"Provided path resolves to: {resolved_input}")
             return {}
-
         if not input_path.exists():
             print(f"Error: Input file '{input_file}' not found.")
             return {}
