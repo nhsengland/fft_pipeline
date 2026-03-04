@@ -514,6 +514,9 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
             raise FileNotFoundError(f"No file found for month: {month}")
 
     # Process each file
+    successful_files = 0
+    failed_files = 0
+
     for file_path in files:
         logger.info("")
         logger.info("=" * 50)
@@ -522,12 +525,22 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
 
         try:
             process_single_file(service_type, file_path, processing_config)
+            successful_files += 1
+            logger.info(f"✓ Successfully processed: {file_path.name}")
         except Exception as e:
-            logger.error(f"Failed to process {file_path.name}: {e}", exc_info=True)
+            failed_files += 1
+            logger.error(f"✗ Failed to process {file_path.name}: {e}", exc_info=True)
             continue  # Continue with next file
 
     logger.info("")
-    logger.info(f"✓ Pipeline completed - processed {len(files)} files")
+    if failed_files == 0:
+        logger.info(f"✓ Pipeline completed successfully - processed {successful_files}/{len(files)} files")
+    elif successful_files == 0:
+        logger.error(f"✗ Pipeline failed - 0/{len(files)} files processed successfully")
+        raise RuntimeError(f"All {len(files)} files failed to process")
+    else:
+        logger.warning(f"⚠ Pipeline completed with errors - {successful_files}/{len(files)} files processed successfully, {failed_files} failed")
+        raise RuntimeError(f"Pipeline completed with {failed_files} failures out of {len(files)} files")
 
 
 # %%
