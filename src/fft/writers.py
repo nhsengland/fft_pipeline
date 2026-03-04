@@ -1292,11 +1292,11 @@ def write_summary_sheet(
             sheet.cell(row=row, column=col).value = value
     # Write period headers
     period_row = config["period_row"]
-    for col_idx in range(3, 11):  # Columns C to J
-        if col_idx in [3, 4, 5, 7, 9]:  # Current period columns
-            safe_write_cell(sheet, period_row, col_idx, current_period)
-        elif col_idx in [6, 8, 10]:  # Previous period columns
-            safe_write_cell(sheet, period_row, col_idx, previous_period)
+    for data_key, col in config["cols"].items():
+        if data_key.endswith("_current") or data_key in ["orgs_submitting", "responses_to_date"]:
+            safe_write_cell(sheet, period_row, col, current_period)
+        elif data_key.endswith("_previous"):
+            safe_write_cell(sheet, period_row, col, previous_period)
 
     # Write data for each provider type
     for provider_key in provider_types:
