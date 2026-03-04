@@ -1,6 +1,7 @@
 """Excel output functions."""
 
 import logging
+import numbers
 from pathlib import Path
 
 import pandas as pd
@@ -171,12 +172,12 @@ def write_dataframe_to_sheet(
                 cell.value = cell_value
 
                 # Set appropriate number format based on data type and column
-                if col_idx in percentage_columns and isinstance(cell_value, (int, float)) and cell_value != "*":
+                if col_idx in percentage_columns and isinstance(cell_value, numbers.Number) and cell_value != "*":
                     # Set percentage format
                     cell.number_format = PERCENTAGE_NUMBER_FORMAT
-                elif isinstance(cell_value, (int, float)):
+                elif isinstance(cell_value, numbers.Number):
                     # Set number format with thousands separator for integers, general for floats
-                    if isinstance(cell_value, int) or (isinstance(cell_value, float) and cell_value.is_integer()):
+                    if isinstance(cell_value, (int, numbers.Integral)) or (isinstance(cell_value, numbers.Real) and float(cell_value).is_integer()):
                         cell.number_format = "#,##0"  # Thousands separator for whole numbers
                     else:
                         cell.number_format = "General"  # Default for decimals
@@ -920,7 +921,7 @@ def _calculate_subtotal_formula(sheet, formula: str):
     total = 0
     for row in range(start_row, end_row + 1):
         data_cell = sheet.cell(row=row, column=col_idx)
-        if data_cell.value and isinstance(data_cell.value, (int, float)):
+        if data_cell.value and isinstance(data_cell.value, numbers.Number):
             if not sheet.row_dimensions[row].hidden:
                 total += data_cell.value
 
@@ -1002,7 +1003,7 @@ def _evaluate_expression(sheet, expression: str):
         total = 0
         for part in parts:
             value = _get_cell_value(sheet, part)
-            if isinstance(value, (int, float)):
+            if isinstance(value, numbers.Number):
                 total += value
         return total
 
@@ -1023,7 +1024,7 @@ def _get_cell_value(sheet, cell_ref: str):
 
     # Otherwise return the raw value
     value = cell.value
-    return value if isinstance(value, (int, float)) else 0
+    return value if isinstance(value, numbers.Number) else 0
 
 
 def _evaluate_sum_range(sheet, range_expr: str):
@@ -1041,7 +1042,7 @@ def _evaluate_sum_range(sheet, range_expr: str):
         for col in range(start_cell.column, end_cell.column + 1):
             cell = sheet.cell(row=row, column=col)
             value = _get_cell_value(sheet, cell.coordinate)
-            if isinstance(value, (int, float)):
+            if isinstance(value, numbers.Number):
                 total += value
 
     return total
