@@ -612,14 +612,14 @@ def clean_icb_name(name: str) -> str:
             "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD")
 
     Returns:
-        Cleaned name (e.g., "LANCASHIRE AND SOUTH CUMBRIA ICB")
+        Cleaned name (e.g., "NHS LANCASHIRE AND SOUTH CUMBRIA ICB")
 
     >>> clean_icb_name(
     ...     "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD"
     ... )
-    'LANCASHIRE AND SOUTH CUMBRIA ICB'
+    'NHS LANCASHIRE AND SOUTH CUMBRIA ICB'
     >>> clean_icb_name("NHS SUSSEX INTEGRATED CARE BOARD")
-    'SUSSEX ICB'
+    'NHS SUSSEX ICB'
     >>> clean_icb_name("INDEPENDENT SECTOR PROVIDERS")
     'INDEPENDENT SECTOR PROVIDERS'
 
@@ -628,8 +628,7 @@ def clean_icb_name(name: str) -> str:
         return name
 
     result = name
-    if result.startswith("NHS "):
-        result = result[4:]  # Remove "NHS " prefix
+    # Replace "INTEGRATED CARE BOARD" with "ICB" while preserving NHS prefix
     result = result.replace("INTEGRATED CARE BOARD", "ICB")
 
     return result.strip()
@@ -803,8 +802,18 @@ def extract_summary_data(
         """Build column name from prefix and suffix."""
         return f"{prefix}{suffix}"
 
+    def to_numeric(val):
+        """Convert '-' strings and NA values to 0 for calculations."""
+        if val == "-" or val == "NA" or pd.isna(val):
+            return 0
+        return val
+
     def calc_percentage(likely_val, extremely_likely_val, responses_val):
         """Calculate percentage from likely + extremely likely / responses."""
+        likely_val = to_numeric(likely_val)
+        extremely_likely_val = to_numeric(extremely_likely_val)
+        responses_val = to_numeric(responses_val)
+
         if responses_val == 0:
             return 0
         return (likely_val + extremely_likely_val) / responses_val
@@ -826,14 +835,16 @@ def extract_summary_data(
     for key, suffix in orgs_cols.items():
         # VBA only sets B3 (total) and B5 (wics), not B4 (acute)
         if not (service_type == "ae" and key == "acute"):
-            orgs_submitting[key] = current_row[get_col(suffix)]
+            orgs_submitting[key] = to_numeric(current_row[get_col(suffix)])
 
     # VBA sets all responses values
     resp_cols = summary_config["responses"]
     for key, suffix in resp_cols.items():
-        responses_current[key] = current_row[get_col(suffix)]
-        responses_previous[key] = previous_row[get_col(suffix)]
-        responses_to_date[key] = time_series_df.loc[current_idx:, get_col(suffix)].sum()
+        responses_current[key] = to_numeric(current_row[get_col(suffix)])
+        responses_previous[key] = to_numeric(previous_row[get_col(suffix)])
+        # For sum, convert each value before summing
+        col_data = time_series_df.loc[current_idx:, get_col(suffix)].apply(to_numeric)
+        responses_to_date[key] = col_data.sum()
 
     # VBA sets percentages only if responses > 0
     calc_context = {

@@ -8,6 +8,7 @@ from pathlib import Path
 from fft.config import (
     IS1_CODE,
     IS1_NAME,
+    MODE_COLS,
     NHS_PROVIDER_KEYWORDS,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
@@ -243,6 +244,12 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     if "ward" in cleaned_data:
         suppressed_data["ward"] = ward_suppressed
 
+    # Add mode_org dataset for ambulance service
+    if service_type == "ambulance":
+        # Create mode_org dataset from organisation data using configured columns
+        mode_cols = OUTPUT_COLUMNS["ambulance"]["Mode Org"]
+        available_mode_cols = [col for col in mode_cols if col in org_suppressed.columns]
+        suppressed_data["mode_org"] = org_suppressed[available_mode_cols]
     template_config = TEMPLATE_CONFIG[service_type]
     data_start_row = template_config["data_start_row"]
 
@@ -260,7 +267,7 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
             available_cols = [col for col in output_cols if col in df.columns]
             output_df = df[available_cols]
 
-            write_dataframe_to_sheet(wb, output_df, sheet_name, data_start_row)
+            write_dataframe_to_sheet(wb, output_df, sheet_name, data_start_row, service_type=service_type)
 
     # Step 13: Write England totals
     logger.info("Writing England totals...")

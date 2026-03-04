@@ -100,10 +100,12 @@ def write_dataframe_to_sheet(
     sheet_name: str,
     start_row: int,
     start_col: int = 1,
+    service_type: str = None,
 ) -> None:
     """Write DataFrame contents to a specific sheet location.
 
     Writes data without headers - assumes template already has headers in place.
+    Sets proper Excel data types: numbers, percentages, and general text.
 
     Args:
         workbook: Openpyxl Workbook object
@@ -111,6 +113,7 @@ def write_dataframe_to_sheet(
         sheet_name: Name of target sheet
         start_row: Row number to start writing (1-indexed)
         start_col: Column number to start writing (1-indexed, default 1)
+        service_type: Service type ('inpatient', 'ae', 'ambulance') for percentage detection
 
     Returns:
         None (modifies workbook in place)
@@ -126,21 +129,21 @@ def write_dataframe_to_sheet(
     ...     'ICB_Name': ['Test ICB 1', 'Test ICB 2'],
     ...     'Total Responses': [100, 200]
     ... })
-    >>> write_dataframe_to_sheet(wb, df, 'ICB', start_row=15, start_col=1)
+    >>> write_dataframe_to_sheet(wb, df, 'ICB', start_row=15, start_col=1, service_type='inpatient')
     >>> wb['ICB'].cell(row=15, column=1).value
     'ABC'
     >>> wb['ICB'].cell(row=16, column=2).value
     'Test ICB 2'
 
     # Edge case: Sheet doesn't exist
-    >>> write_dataframe_to_sheet(wb, df, 'NonExistent', start_row=15)
+    >>> write_dataframe_to_sheet(wb, df, 'NonExistent', start_row=15, service_type='inpatient')
     Traceback (most recent call last):
         ...
     KeyError: "Sheet 'NonExistent' not found in workbook"
 
     # Edge case: Empty DataFrame
     >>> df_empty = pd.DataFrame(columns=['A', 'B'])
-    >>> write_dataframe_to_sheet(wb, df_empty, 'ICB', start_row=20)
+    >>> write_dataframe_to_sheet(wb, df_empty, 'ICB', start_row=20, service_type='inpatient')
     >>> wb['ICB'].cell(row=20, column=1).value is None
     True
 
@@ -150,13 +153,67 @@ def write_dataframe_to_sheet(
 
     sheet = workbook[sheet_name]
 
+    # Get percentage columns for this sheet if service_type provided
+    percentage_columns = set()
+    if service_type and service_type in PERCENTAGE_COLUMN_CONFIG:
+        if sheet_name in PERCENTAGE_COLUMN_CONFIG[service_type]:
+            percentage_columns = set(PERCENTAGE_COLUMN_CONFIG[service_type][sheet_name])
+
     for row_idx, row in enumerate(df.itertuples(index=False), start=start_row):
         for col_idx, cell_value in enumerate(row, start=start_col):
+            cell = sheet.cell(row=row_idx, column=col_idx)
+
             # Convert NaN values to dashes to match VBA behaviour
-            display_value = "-" if pd.isna(cell_value) else cell_value
-            sheet.cell(row=row_idx, column=col_idx).value = display_value
+            if pd.isna(cell_value):
+                cell.value = "-"
+                cell.number_format = "General"
+            else:
+                cell.value = cell_value
+
+                # Set appropriate number format based on data type and column
+                if col_idx in percentage_columns and isinstance(cell_value, (int, float)) and cell_value != "*":
+                    # Set percentage format
+                    cell.number_format = PERCENTAGE_NUMBER_FORMAT
+                elif isinstance(cell_value, (int, float)):
+                    # Set number format with thousands separator for integers, general for floats
+                    if isinstance(cell_value, int) or (isinstance(cell_value, float) and cell_value.is_integer()):
+                        cell.number_format = "#,##0"  # Thousands separator for whole numbers
+                    else:
+                        cell.number_format = "General"  # Default for decimals
+                else:
+                    # Text values get general format
+                    cell.number_format = "General"
 
 
+def add_terminating_row(
+    workbook: Workbook,
+    sheet_name: str,
+    terminating_row: int,
+    num_columns: int,
+) -> None:
+    """Add a non-table row after data and trim sheet to prevent scrolling to row 999.
+
+    Args:
+        workbook: Openpyxl Workbook object
+        sheet_name: Name of target sheet
+        terminating_row: Row number to add terminating row (1-indexed)
+        num_columns: Number of columns to fill with dashes
+
+    """
+    if sheet_name not in workbook.sheetnames:
+        return
+
+    sheet = workbook[sheet_name]
+
+    # Add dashes to all data columns in the terminating row
+    for col_idx in range(1, num_columns + 1):
+        sheet.cell(row=terminating_row, column=col_idx).value = "-"
+
+    # Delete excess rows and columns to prevent infinite scrolling
+    if sheet.max_row > terminating_row:
+        sheet.delete_rows(terminating_row + 1, sheet.max_row - terminating_row)
+    if sheet.max_column > num_columns:
+        sheet.delete_cols(num_columns + 1, sheet.max_column - num_columns)
 
 
 # %%
@@ -588,7 +645,6 @@ def _get_data_from_level(
     _recalculate_percentages(nhs_row)
 
     return total_row, nhs_row
-
 def _get_count_columns(level_df: pd.DataFrame, service_type: str = "inpatient") -> list:
     """Get list of count columns for aggregation."""
     return get_count_columns_for_service(service_type)
@@ -1211,13 +1267,36 @@ def write_summary_sheet(
     # Get provider types from the summary data
     provider_types = list(summary_data["orgs_submitting"].keys())
 
+    # Helper function to safely write to potentially merged cells
+    def safe_write_cell(sheet, row, col, value):
+        """Write to cell, handling merged cells by writing to top-left cell."""
+        try:
+            cell = sheet.cell(row=row, column=col)
+            if hasattr(cell, 'coordinate') and str(type(cell)) == "<class 'openpyxl.worksheet.merge.MergedCell'>":
+                # Find the top-left cell of the merged range
+                for merged_range in sheet.merged_cells.ranges:
+                    if cell.coordinate in merged_range:
+                        top_left_cell = sheet.cell(row=merged_range.min_row, column=merged_range.min_col)
+                        top_left_cell.value = value
+                        return
+            cell.value = value
+        except AttributeError:
+            # If it's a MergedCell, find the top-left cell
+            for merged_range in sheet.merged_cells.ranges:
+                if (merged_range.min_row <= row <= merged_range.max_row and
+                    merged_range.min_col <= col <= merged_range.max_col):
+                    top_left_cell = sheet.cell(row=merged_range.min_row, column=merged_range.min_col)
+                    top_left_cell.value = value
+                    return
+            # If not found in any merged range, just try regular assignment
+            sheet.cell(row=row, column=col).value = value
     # Write period headers
     period_row = config["period_row"]
     for col_idx in range(3, 11):  # Columns C to J
         if col_idx in [3, 4, 5, 7, 9]:  # Current period columns
-            sheet.cell(row=period_row, column=col_idx).value = current_period
+            safe_write_cell(sheet, period_row, col_idx, current_period)
         elif col_idx in [6, 8, 10]:  # Previous period columns
-            sheet.cell(row=period_row, column=col_idx).value = previous_period
+            safe_write_cell(sheet, period_row, col_idx, previous_period)
 
     # Write data for each provider type
     for provider_key in provider_types:
@@ -1228,7 +1307,7 @@ def write_summary_sheet(
         for data_key, col in config["cols"].items():
             if data_key in summary_data and provider_key in summary_data[data_key]:
                 value = summary_data[data_key][provider_key]
-                sheet.cell(row=row, column=col).value = value
+                safe_write_cell(sheet, row, col, value)
 
 
 # %%
