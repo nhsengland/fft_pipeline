@@ -1154,7 +1154,7 @@ async def post(service: str, month: str):
         return status_box(
             False,
             f"{service.title()} pipeline not ready",
-            [error_msg + f"\n\nPlease select a fully implemented service (marked with ✓)"]
+            error_msg + "\n\nPlease select a fully implemented service (marked with ✓)",
         )
 
     # Start the pipeline asynchronously so progress can be seen
