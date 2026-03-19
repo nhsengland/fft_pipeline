@@ -737,7 +737,19 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
 
         # Enhanced error detection: check both return code and log content
         basic_success = result.returncode == 0
-        output = result.stdout if result.stdout else (result.stderr if result.stderr else "No output captured.")
+        if result.returncode != 0:
+            # On failure, prefer stderr, and include stdout if present so diagnostics are not lost
+            if result.stderr:
+                output = result.stderr
+                if result.stdout:
+                    output += "\n\nSTDOUT:\n" + result.stdout
+            elif result.stdout:
+                output = result.stdout
+            else:
+                output = "No output captured."
+        else:
+            # On success, keep preferring stdout when available
+            output = result.stdout if result.stdout else (result.stderr if result.stderr else "No output captured.")
 
         # Analyze output for error patterns even if return code is 0
         error_patterns = [
