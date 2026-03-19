@@ -997,7 +997,7 @@ def get():
                     Div(
                         "Choose the NHS service type to process. Services marked with ✓ are ready to use. Services marked with ⚠ are incomplete.",
                         id="service-help",
-                        style="font-size: 0.875rem; color: var(--muted); margin-top: 0.25rem;",
+                        style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.25rem;",
                     ),
                     cls="field",
                 ),
