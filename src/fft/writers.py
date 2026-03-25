@@ -115,7 +115,7 @@ def write_dataframe_to_sheet(
         sheet_name: Name of target sheet
         start_row: Row number to start writing (1-indexed)
         start_col: Column number to start writing (1-indexed, default 1)
-        service_type: Service type ('inpatient', 'ae', 'ambulance') for percentage detection
+        service_type: Service type for percentage detection
 
     Returns:
         None (modifies workbook in place)
@@ -131,21 +131,27 @@ def write_dataframe_to_sheet(
     ...     'ICB_Name': ['Test ICB 1', 'Test ICB 2'],
     ...     'Total Responses': [100, 200]
     ... })
-    >>> write_dataframe_to_sheet(wb, df, 'ICB', start_row=15, start_col=1, service_type='inpatient')
+    >>> write_dataframe_to_sheet(
+    ...     wb, df, 'ICB', start_row=15, start_col=1, service_type='inpatient'
+    ... )
     >>> wb['ICB'].cell(row=15, column=1).value
     'ABC'
     >>> wb['ICB'].cell(row=16, column=2).value
     'Test ICB 2'
 
     # Edge case: Sheet doesn't exist
-    >>> write_dataframe_to_sheet(wb, df, 'NonExistent', start_row=15, service_type='inpatient')
+    >>> write_dataframe_to_sheet(
+    ...     wb, df, 'NonExistent', start_row=15, service_type='inpatient'
+    ... )
     Traceback (most recent call last):
         ...
     KeyError: "Sheet 'NonExistent' not found in workbook"
 
     # Edge case: Empty DataFrame
     >>> df_empty = pd.DataFrame(columns=['A', 'B'])
-    >>> write_dataframe_to_sheet(wb, df_empty, 'ICB', start_row=20, service_type='inpatient')
+    >>> write_dataframe_to_sheet(
+    ...     wb, df_empty, 'ICB', start_row=20, service_type='inpatient'
+    ... )
     >>> wb['ICB'].cell(row=20, column=1).value is None
     True
 
@@ -173,13 +179,23 @@ def write_dataframe_to_sheet(
                 cell.value = cell_value
 
                 # Set appropriate number format based on data type and column
-                if col_idx in percentage_columns and isinstance(cell_value, numbers.Number) and cell_value != "*":
+                if (
+                    col_idx in percentage_columns
+                    and isinstance(cell_value, numbers.Number)
+                    and cell_value != "*"
+                ):
                     # Set percentage format
                     cell.number_format = PERCENTAGE_NUMBER_FORMAT
                 elif isinstance(cell_value, numbers.Number):
-                    # Set number format with thousands separator for integers, general for floats
-                    if isinstance(cell_value, (int, numbers.Integral)) or (isinstance(cell_value, numbers.Real) and float(cell_value).is_integer()):
-                        cell.number_format = "#,##0"  # Thousands separator for whole numbers
+                    # Set number format with thousands separator for integers,
+                    # general for floats
+                    if isinstance(cell_value, (int, numbers.Integral)) or (
+                        isinstance(cell_value, numbers.Real)
+                        and float(cell_value).is_integer()
+                    ):
+                        cell.number_format = (
+                            "#,##0"  # Thousands separator for whole numbers
+                        )
                     else:
                         cell.number_format = "General"  # Default for decimals
                 else:
@@ -339,9 +355,13 @@ def write_bs_lookup_data(
             # Sort pairs together to maintain code-to-name relationship
             if len(pair) > 1:
                 # Sort by first column (typically the code) to maintain pairing
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                sorted_pair = (
+                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                )
             else:
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                sorted_pair = (
+                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                )
 
             # Write each column from the sorted pairs
             for pair_col_idx, col_name in enumerate(pair):
@@ -367,9 +387,13 @@ def write_bs_lookup_data(
             # Sort pairs together to maintain relationships (e.g., code-to-name pairing)
             if len(pair) > 1:
                 # Sort by first column (typically the code) to maintain pairing
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                sorted_pair = (
+                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                )
             else:
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                sorted_pair = (
+                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+                )
 
             # Write each column from the sorted pairs
             for pair_col_idx, col_name in enumerate(pair):
@@ -647,6 +671,8 @@ def _get_data_from_level(
     _recalculate_percentages(nhs_row)
 
     return total_row, nhs_row
+
+
 def _get_count_columns(level_df: pd.DataFrame, service_type: str = "inpatient") -> list:
     """Get list of count columns for aggregation."""
     return get_count_columns_for_service(service_type)
@@ -1278,19 +1304,27 @@ def write_summary_sheet(
         if isinstance(cell, MergedCell):
             # Find the merged range containing this cell
             for merged_range in sheet.merged_cells.ranges:
-                if (merged_range.min_row <= row <= merged_range.max_row and
-                    merged_range.min_col <= col <= merged_range.max_col):
+                if (
+                    merged_range.min_row <= row <= merged_range.max_row
+                    and merged_range.min_col <= col <= merged_range.max_col
+                ):
                     # Write to the top-left cell of the merged range
-                    top_left_cell = sheet.cell(row=merged_range.min_row, column=merged_range.min_col)
+                    top_left_cell = sheet.cell(
+                        row=merged_range.min_row, column=merged_range.min_col
+                    )
                     top_left_cell.value = value
                     return
 
         # Regular cell - write directly
         cell.value = value
+
     # Write period headers
     period_row = config["period_row"]
     for data_key, col in config["cols"].items():
-        if data_key.endswith("_current") or data_key in ["orgs_submitting", "responses_to_date"]:
+        if data_key.endswith("_current") or data_key in [
+            "orgs_submitting",
+            "responses_to_date",
+        ]:
             safe_write_cell(sheet, period_row, col, current_period)
         elif data_key.endswith("_previous"):
             safe_write_cell(sheet, period_row, col, previous_period)

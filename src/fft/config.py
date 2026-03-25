@@ -86,7 +86,7 @@ _AMB_ORG_ID = {
     "Parent name": "ICB_Name",
     "Org code": "Trust_Code",
     "Org name": "Trust_Name",  # Standard mapping
-    "Organisation Name": "Trust_Name",  # Map ambulance template's "Organisation Name" to standard "Trust_Name"
+    "Organisation Name": "Trust_Name",  # Map ambulance template's "Organisation Name"
 }
 _IP_DATA = {
     "1 Very Good SUM": "Very Good",
@@ -155,8 +155,14 @@ _OUT_TRUST = ["ICB_Code", "Trust_Code", "Trust_Name"]
 _OUT_SITE = _OUT_TRUST + ["Site_Code", "Site_Name"]
 _OUT_WARD = _OUT_SITE + ["Ward_Name"]
 _OUT_DATA = TOTALS_COLS + _STD_PCT_COLS + LIKERT_COLS
-_AMB_OUT_DATA = TOTALS_COLS + _STD_PCT_COLS + LIKERT_COLS  # Ambulance has same order as other services
-_AMB_OUT_ORG = ["ICB_Code", "Trust_Code", "Trust_Name"]  # Ambulance org columns: ICB Code, Org Code, Organisation Name
+_AMB_OUT_DATA = (
+    TOTALS_COLS + _STD_PCT_COLS + LIKERT_COLS
+)  # Ambulance has same order as other services
+_AMB_OUT_ORG = [
+    "ICB_Code",
+    "Trust_Code",
+    "Trust_Name",
+]  # Ambulance org columns: ICB Code, Org Code, Organisation Name
 
 OUTPUT_COLUMNS = {
     "inpatient": {
@@ -340,7 +346,8 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
                 "name_column": "Trust_Name",
                 "england_label_column": "Trust_Name",
                 "columns": [
-                    "ICB Code",  # Only ICB Code, no ICB Name in ambulance PTS Org template
+                    "ICB Code",
+                    # Only ICB Code, no ICB Name in ambulance PTS Org template
                     *TRUST_COLS,
                     *TOTALS_COLS,
                     *_STD_PCT_COLS,
@@ -353,7 +360,8 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
                 "name_column": "Trust_Name",
                 "england_label_column": "Trust_Name",
                 "columns": [
-                    "ICB Code",  # Only ICB Code, no ICB Name in ambulance Mode Org template
+                    "ICB Code",
+                    # Only ICB Code, no ICB Name in ambulance Mode Org template
                     *TRUST_COLS,
                     "Total Responses",
                     *MODE_COLS["ambulance"],

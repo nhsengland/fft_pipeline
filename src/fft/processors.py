@@ -804,7 +804,7 @@ def extract_summary_data(
 
     def to_numeric(val):
         """Convert '-' strings and NA values to 0 for calculations."""
-        if val == "-" or val == "NA" or pd.isna(val):
+        if val in {"-", "NA"} or pd.isna(val):
             return 0
         return val
 

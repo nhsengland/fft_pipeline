@@ -8,7 +8,6 @@ from pathlib import Path
 from fft.config import (
     IS1_CODE,
     IS1_NAME,
-    MODE_COLS,
     NHS_PROVIDER_KEYWORDS,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
@@ -267,7 +266,9 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
             available_cols = [col for col in output_cols if col in df.columns]
             output_df = df[available_cols]
 
-            write_dataframe_to_sheet(wb, output_df, sheet_name, data_start_row, service_type=service_type)
+            write_dataframe_to_sheet(
+                wb, output_df, sheet_name, data_start_row, service_type=service_type
+            )
 
     # Step 13: Write England totals
     logger.info("Writing England totals...")
