@@ -4,6 +4,7 @@ import logging
 import platform
 import re
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -658,6 +659,7 @@ def validate_service_implementation(service_type: str) -> tuple[bool, list[str]]
 
     Returns:
         tuple: (is_complete, missing_components)
+
     """
     missing = []
 
@@ -675,7 +677,13 @@ def validate_service_implementation(service_type: str) -> tuple[bool, list[str]]
     if service_type in TEMPLATE_CONFIG:
         template_file = TEMPLATE_CONFIG[service_type]["template_file"]
         # Go up from /src/fft/app/server.py to project root
-        template_path = Path(__file__).parent.parent.parent.parent / "data" / "inputs" / "templates" / template_file
+        template_path = (
+            Path(__file__).parent.parent.parent.parent
+            / "data"
+            / "inputs"
+            / "templates"
+            / template_file
+        )
         if not template_path.exists():
             missing.append(f"Template file: {template_file}")
 
@@ -707,15 +715,19 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         # Validate service implementation before running
         is_complete, missing_components = validate_service_implementation(service)
         if not is_complete:
-            error_msg = f"Cannot run {service} pipeline - missing implementation components:\n"
+            error_msg = (
+                f"Cannot run {service} pipeline - missing implementation components:\n"
+            )
             error_msg += "\n".join(f"• {component}" for component in missing_components)
             error_msg += f"\n\n{service.title()} pipeline is not yet fully implemented."
 
             update_progress(100, "Failed", "Service not fully implemented")
-            pipeline_status.update({"running": False, "success": False, "logs": [error_msg]})
+            pipeline_status.update(
+                {"running": False, "success": False, "logs": [error_msg]}
+            )
             return False, error_msg
         flag = [k for k, v in SERVICE_TYPES.items() if v == service][0]
-        cmd = ["uv", "run", "python", "-m", "fft", f"--{flag}"]
+        cmd = [sys.executable, "-m", "fft", f"--{flag}"]
         if month and month != "all":
             cmd.extend(["--month", month])
 
@@ -738,7 +750,8 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         # Enhanced error detection: check both return code and log content
         basic_success = result.returncode == 0
         if result.returncode != 0:
-            # On failure, prefer stderr, and include stdout if present so diagnostics are not lost
+            # On failure, prefer stderr, and include stdout if present
+            # so diagnostics are not lost
             if result.stderr:
                 output = result.stderr
                 if result.stdout:
@@ -749,7 +762,11 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
                 output = "No output captured."
         else:
             # On success, keep preferring stdout when available
-            output = result.stdout if result.stdout else (result.stderr if result.stderr else "No output captured.")
+            output = (
+                result.stdout
+                if result.stdout
+                else (result.stderr if result.stderr else "No output captured.")
+            )
 
         # Analyze output for error patterns even if return code is 0
         error_patterns = [
@@ -759,10 +776,12 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
             "Pipeline failed",
             "✗ Pipeline failed",
             "All .* files failed to process",
-            "Pipeline completed with .* failures"
+            "Pipeline completed with .* failures",
         ]
 
-        has_errors = any(re.search(pattern, output, re.IGNORECASE) for pattern in error_patterns)
+        has_errors = any(
+            re.search(pattern, output, re.IGNORECASE) for pattern in error_patterns
+        )
         success = basic_success and not has_errors
 
         # Store logs for final display
@@ -1007,9 +1026,9 @@ def get():
                     Label("Service Type", for_="service"),
                     service_select(),
                     Div(
-                        "Choose the NHS service type to process. Services marked with ✓ are ready to use. Services marked with ⚠ are incomplete.",
+                        "Choose the NHS service type to process. Services marked with ✓ are ready to use. Services marked with ⚠ are incomplete.",  # noqa: E501 # Long line justified for clarity
                         id="service-help",
-                        style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.25rem;",
+                        style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.25rem;",  # noqa: E501 # Long line justified for clarity
                     ),
                     cls="field",
                 ),

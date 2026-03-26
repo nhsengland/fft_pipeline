@@ -1,11 +1,24 @@
 """Suppression logic for FFT data privacy protection."""
 
+from typing import TypedDict
+
 import pandas as pd
 
 from fft.config import AGGREGATION_COLUMNS, MODE_COLS, SUPPRESSION_THRESHOLD
 
 # Constants for suppression logic
 SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
+
+
+class ApplyCascadeSuppressionParams(TypedDict):
+    """Parameters for apply_cascade_suppression function."""
+
+    parent_df: pd.DataFrame
+    child_df: pd.DataFrame
+    parent_code_col: str
+    child_code_col: str
+    parent_suppression_col: str
+
 
 # %%
 def apply_first_level_suppression(df: pd.DataFrame) -> pd.DataFrame:
@@ -272,11 +285,7 @@ def apply_second_level_suppression(
 
 # %%
 def apply_cascade_suppression(
-    parent_df: pd.DataFrame,
-    child_df: pd.DataFrame,
-    parent_code_col: str,
-    child_code_col: str,
-    parent_suppression_col: str,
+    params: ApplyCascadeSuppressionParams,
 ) -> pd.DataFrame:
     """Apply cascade suppression from parent to child level.
 
@@ -310,6 +319,8 @@ def apply_cascade_suppression(
     of any suppressed parent organisation.
 
     Args:
+        params: Parameters dictionary containing parent_df, child_df, parent_code_col,
+            child_code_col, and parent_suppression_col
         parent_df: Parent level DataFrame with suppression flags
         child_df: Child level DataFrame with 'Rank' column
         parent_code_col: Column name for parent code (e.g., 'ICB_Code')
@@ -389,6 +400,12 @@ def apply_cascade_suppression(
     [1]
 
     """
+    parent_df = params["parent_df"]
+    child_df = params["child_df"]
+    parent_code_col = params["parent_code_col"]
+    child_code_col = params["child_code_col"]
+    parent_suppression_col = params["parent_suppression_col"]
+
     # Validate columns
     if parent_code_col not in parent_df.columns:
         raise KeyError(f"Column '{parent_code_col}' not found in parent DataFrame")

@@ -28,6 +28,7 @@ from fft.processors import (
     standardise_column_names,
 )
 from fft.suppression import (
+    ApplyCascadeSuppressionParams,
     add_rank_column,
     apply_cascade_suppression,
     apply_first_level_suppression,
@@ -35,6 +36,8 @@ from fft.suppression import (
     suppress_values,
 )
 from fft.validation import (
+    CompareDataByKeyParams,
+    ValidateHeadersParams,
     compare_data_by_key,
     compare_data_range,
     extract_service_type,
@@ -44,6 +47,8 @@ from fft.validation import (
     validate_headers,
 )
 from fft.writers import (
+    WriteDataFrameToSheetParams,
+    WriteEnglandTotalsParams,
     format_percentage_columns,
     load_template,
     populate_summary_sheet,
@@ -167,7 +172,13 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     org_df = apply_first_level_suppression(org_df)
     org_df = apply_second_level_suppression(org_df, group_by_col="ICB_Code")
     org_df = apply_cascade_suppression(
-        icb_df, org_df, "ICB_Code", "ICB_Code", "Suppression_Required"
+        ApplyCascadeSuppressionParams(
+            parent_df=icb_df,
+            child_df=org_df,
+            parent_code_col="ICB_Code",
+            child_code_col="ICB_Code",
+            parent_suppression_col="Suppression_Required",
+        )
     )
     org_df["Suppression_Required"] = org_df[
         ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
@@ -181,7 +192,13 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         site_df = apply_first_level_suppression(site_df)
         site_df = apply_second_level_suppression(site_df, group_by_col="Trust_Code")
         site_df = apply_cascade_suppression(
-            org_df, site_df, "Trust_Code", "Trust_Code", "Suppression_Required"
+            ApplyCascadeSuppressionParams(
+                parent_df=org_df,
+                child_df=site_df,
+                parent_code_col="Trust_Code",
+                child_code_col="Trust_Code",
+                parent_suppression_col="Suppression_Required",
+            )
         )
         site_df["Suppression_Required"] = site_df[
             ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
@@ -196,7 +213,13 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
         ward_df = apply_first_level_suppression(ward_df)
         ward_df = apply_second_level_suppression(ward_df, group_by_col="Site_Code")
         ward_df = apply_cascade_suppression(
-            site_df, ward_df, "Site_Code", "Site_Code", "Suppression_Required"
+            ApplyCascadeSuppressionParams(
+                parent_df=site_df,
+                child_df=ward_df,
+                parent_code_col="Site_Code",
+                child_code_col="Site_Code",
+                parent_suppression_col="Suppression_Required",
+            )
         )
         ward_df["Suppression_Required"] = ward_df[
             ["First_Level_Suppression", "Second_Level_Suppression", "Cascade_Suppression"]
@@ -267,17 +290,29 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
             output_df = df[available_cols]
 
             write_dataframe_to_sheet(
-                wb, output_df, sheet_name, data_start_row, service_type=service_type
+                WriteDataFrameToSheetParams(
+                    workbook=wb,
+                    df=output_df,
+                    sheet_name=sheet_name,
+                    start_row=data_start_row,
+                    start_col=1,
+                    service_type=service_type,
+                )
             )
 
     # Step 13: Write England totals
     logger.info("Writing England totals...")
     write_england_totals(
-        wb,
-        service_type,
-        national_df,
-        org_counts,
-        {"suppressed_data": suppressed_data, "all_level_data": cleaned_data},
+        WriteEnglandTotalsParams(
+            workbook=wb,
+            service_type=service_type,
+            national_df=national_df,
+            org_counts=org_counts,
+            data_options={
+                "suppressed_data": suppressed_data,
+                "all_level_data": cleaned_data,
+            },
+        )
     )
 
     # Step 14: Write BS lookup data (use unsuppressed ward data for lookups)
@@ -419,13 +454,15 @@ def _perform_sheet_comparisons(
 
         if sheet_name in VALIDATION_KEY_COLUMNS:
             result = compare_data_by_key(
-                expected_path=ground_truth_path,
-                actual_path=output_path,
-                sheet_name=ground_truth_sheet,
-                key_column=VALIDATION_KEY_COLUMNS[sheet_name],
-                start_row=15,
-                data_only=True,
-                actual_sheet_name=sheet_name,
+                CompareDataByKeyParams(
+                    expected_path=ground_truth_path,
+                    actual_path=output_path,
+                    sheet_name=ground_truth_sheet,
+                    key_column=VALIDATION_KEY_COLUMNS[sheet_name],
+                    start_row=15,
+                    data_only=True,
+                    actual_sheet_name=sheet_name,
+                )
             )
         else:
             result = compare_data_range(
@@ -452,11 +489,13 @@ def _perform_header_validation(
             return
 
         header_results = validate_headers(
-            str(output_path),
-            str(ground_truth_path),
-            extracted_service_type,
-            sheets_to_validate=None,
-            verbose=False,
+            ValidateHeadersParams(
+                pipeline_file=str(output_path),
+                ground_truth_file=str(ground_truth_path),
+                service_type=extracted_service_type,
+                sheets_to_validate=None,
+                verbose=False,
+            )
         )
 
         # Print detailed header validation report if we got results
@@ -547,10 +586,7 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
             f"{successful_files}/{len(files)} files"
         )
     elif successful_files == 0:
-        logger.error(
-            "✗ Pipeline failed - 0/"
-            f"{len(files)} files processed successfully"
-        )
+        logger.error(f"✗ Pipeline failed - 0/{len(files)} files processed successfully")
         raise RuntimeError(f"All {len(files)} files failed to process")
     else:
         logger.warning(
@@ -559,8 +595,7 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
             f"{failed_files} failed"
         )
         raise RuntimeError(
-            "Pipeline completed with "
-            f"{failed_files} failures out of {len(files)} files"
+            f"Pipeline completed with {failed_files} failures out of {len(files)} files"
         )
 
 

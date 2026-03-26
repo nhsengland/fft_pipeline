@@ -3,10 +3,14 @@
 import logging
 import numbers
 from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict
 
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
+
+if TYPE_CHECKING:
+    from openpyxl.workbook import Workbook
 from openpyxl.workbook import Workbook
 from openpyxl.worksheet.merge import MergedCell
 
@@ -30,6 +34,47 @@ from fft.loaders import load_collections_overview
 from fft.processors import extract_summary_data
 
 logger = logging.getLogger(__name__)
+
+
+class WriteDataFrameToSheetParams(TypedDict):
+    """Parameters for write_dataframe_to_sheet function."""
+
+    workbook: Workbook
+    df: pd.DataFrame
+    sheet_name: str
+    start_row: int
+    start_col: int
+    service_type: str | None
+
+
+class WriteEnglandTotalsParams(TypedDict):
+    """Parameters for write_england_totals function."""
+
+    workbook: Workbook
+    service_type: str
+    national_df: pd.DataFrame
+    org_counts: dict
+    data_options: dict | None
+
+
+class ProcessSingleSheetParams(TypedDict):
+    """Parameters for _process_single_sheet function."""
+
+    workbook: Workbook
+    sheet_name: str
+    config: dict
+    national_df: pd.DataFrame
+    options: dict | None
+
+
+class WriteSummarySheetParams(TypedDict):
+    """Parameters for write_summary_sheet function."""
+
+    workbook: Workbook
+    summary_data: dict
+    current_period: str
+    previous_period: str
+    service_type: str
 
 
 def load_template(service_type: str) -> Workbook:
@@ -96,26 +141,14 @@ def _has_formula(cell) -> bool:
     return isinstance(cell.value, str) and cell.value.startswith("=")
 
 
-def write_dataframe_to_sheet(
-    workbook: Workbook,
-    df: pd.DataFrame,
-    sheet_name: str,
-    start_row: int,
-    start_col: int = 1,
-    service_type: str | None = None,
-) -> None:
+def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
     """Write DataFrame contents to a specific sheet location.
 
     Writes data without headers - assumes template already has headers in place.
     Sets proper Excel data types: numbers, percentages, and general text.
 
     Args:
-        workbook: Openpyxl Workbook object
-        df: DataFrame to write
-        sheet_name: Name of target sheet
-        start_row: Row number to start writing (1-indexed)
-        start_col: Column number to start writing (1-indexed, default 1)
-        service_type: Service type for percentage detection
+        params: WriteDataFrameToSheetParams with all required parameters
 
     Returns:
         None (modifies workbook in place)
@@ -123,7 +156,8 @@ def write_dataframe_to_sheet(
     Raises:
         KeyError: If sheet_name doesn't exist in workbook
 
-    >>> from src.fft.writers import load_template, write_dataframe_to_sheet
+    >>> from src.fft.writers import load_template, write_dataframe_to_sheet,
+    ... WriteDataFrameToSheetParams
     >>> import pandas as pd
     >>> wb = load_template('inpatient')
     >>> df = pd.DataFrame({
@@ -131,31 +165,54 @@ def write_dataframe_to_sheet(
     ...     'ICB_Name': ['Test ICB 1', 'Test ICB 2'],
     ...     'Total Responses': [100, 200]
     ... })
-    >>> write_dataframe_to_sheet(
-    ...     wb, df, 'ICB', start_row=15, start_col=1, service_type='inpatient'
-    ... )
+    >>> params: WriteDataFrameToSheetParams = {
+    ...     'workbook': wb,
+    ...     'df': df,
+    ...     'sheet_name': 'ICB',
+    ...     'start_row': 15,
+    ...     'start_col': 1,
+    ...     'service_type': 'inpatient'
+    ... }
+    >>> write_dataframe_to_sheet(params)
     >>> wb['ICB'].cell(row=15, column=1).value
     'ABC'
     >>> wb['ICB'].cell(row=16, column=2).value
     'Test ICB 2'
 
     # Edge case: Sheet doesn't exist
-    >>> write_dataframe_to_sheet(
-    ...     wb, df, 'NonExistent', start_row=15, service_type='inpatient'
-    ... )
+    >>> params_edge: WriteDataFrameToSheetParams = {
+    ...     'workbook': wb,
+    ...     'df': df,
+    ...     'sheet_name': 'NonExistent',
+    ...     'start_row': 15,
+    ...     'start_col': 1,
+    ...     'service_type': 'inpatient'
+    ... }
+    >>> write_dataframe_to_sheet(params_edge)
     Traceback (most recent call last):
         ...
     KeyError: "Sheet 'NonExistent' not found in workbook"
 
     # Edge case: Empty DataFrame
     >>> df_empty = pd.DataFrame(columns=['A', 'B'])
-    >>> write_dataframe_to_sheet(
-    ...     wb, df_empty, 'ICB', start_row=20, service_type='inpatient'
-    ... )
+    >>> params_empty: WriteDataFrameToSheetParams = {
+    ...     'workbook': wb,
+    ...     'df': df_empty,
+    ...     'sheet_name': 'ICB',
+    ...     'start_row': 20,
+    ...     'start_col': 1,
+    ...     'service_type': 'inpatient'
+    ... }
+    >>> write_dataframe_to_sheet(params_empty)
     >>> wb['ICB'].cell(row=20, column=1).value is None
     True
 
     """
+    workbook = params["workbook"]
+    sheet_name = params["sheet_name"]
+    start_row = params["start_row"]
+    start_col = params["start_col"]
+    service_type = params["service_type"]
     if sheet_name not in workbook.sheetnames:
         raise KeyError(f"Sheet '{sheet_name}' not found in workbook")
 
@@ -167,16 +224,12 @@ def write_dataframe_to_sheet(
         if sheet_name in PERCENTAGE_COLUMN_CONFIG[service_type]:
             percentage_columns = set(PERCENTAGE_COLUMN_CONFIG[service_type][sheet_name])
 
-    for row_idx, row in enumerate(df.itertuples(index=False), start=start_row):
+    for row_idx, row in enumerate(params["df"].itertuples(index=False), start=start_row):
         for col_idx, cell_value in enumerate(row, start=start_col):
-            cell = sheet.cell(row=row_idx, column=col_idx)
+            _safe_write_cell(sheet, row_idx, col_idx, cell_value)
 
-            # Convert NaN values to dashes to match VBA behaviour
-            if pd.isna(cell_value):
-                cell.value = "-"
-                cell.number_format = "General"
-            else:
-                cell.value = cell_value
+            if sheet.cell(row=row_idx, column=col_idx).value != "-":
+                cell = sheet.cell(row=row_idx, column=col_idx)
 
                 # Set appropriate number format based on data type and column
                 if (
@@ -184,22 +237,16 @@ def write_dataframe_to_sheet(
                     and isinstance(cell_value, numbers.Number)
                     and cell_value != "*"
                 ):
-                    # Set percentage format
                     cell.number_format = PERCENTAGE_NUMBER_FORMAT
                 elif isinstance(cell_value, numbers.Number):
-                    # Set number format with thousands separator for integers,
-                    # general for floats
                     if isinstance(cell_value, (int, numbers.Integral)) or (
                         isinstance(cell_value, numbers.Real)
                         and float(cell_value).is_integer()
                     ):
-                        cell.number_format = (
-                            "#,##0"  # Thousands separator for whole numbers
-                        )
+                        cell.number_format = PERCENTAGE_NUMBER_FORMAT
                     else:
-                        cell.number_format = "General"  # Default for decimals
+                        cell.number_format = "General"
                 else:
-                    # Text values get general format
                     cell.number_format = "General"
 
 
@@ -476,7 +523,21 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
             raise KeyError(f"Sheet '{sheet_name}' not found in workbook")
 
         sheet = workbook[sheet_name]
-        sheet[cell].value = template.format(period=fft_period)
+
+        cell_obj = sheet[cell]
+        if isinstance(cell_obj, MergedCell):
+            for merged_range in sheet.merged_cells.ranges:
+                if (
+                    merged_range.min_row <= cell_obj.row <= merged_range.max_row
+                    and merged_range.min_col <= cell_obj.col <= merged_range.max_col
+                ):
+                    top_left_cell = sheet.cell(
+                        row=merged_range.min_row, column=merged_range.min_col
+                    )
+                    top_left_cell.value = template.format(period=fft_period)
+                    break
+        else:
+            sheet[cell].value = template.format(period=fft_period)
 
         # FIXME: This is a temporary fix
         # Fix A&E Notes sheet rows 39-40 alignment
@@ -488,13 +549,7 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
 
 
 # %%
-def write_england_totals(
-    workbook: Workbook,
-    service_type: str,
-    national_df: pd.DataFrame,
-    org_counts: dict,
-    data_options: dict = None,
-) -> None:
+def write_england_totals(params: WriteEnglandTotalsParams) -> None:
     """Write England-level totals to rows 12-14 of output sheets.
 
     Writes three rows:
@@ -503,11 +558,7 @@ def write_england_totals(
     - Row 14: Selection (excluding suppressed data) - placeholder
 
     Args:
-        workbook: Openpyxl Workbook object
-        service_type: 'inpatient', 'ae', or 'ambulance'
-        national_df: DataFrame from aggregate_to_national() with Total/NHS/IS1 rows
-        org_counts: Dict with 'total_count', 'nhs_count', 'is1_count'
-        data_options: Optional dict with 'suppressed_data' and 'all_level_data' keys
+        params: WriteEnglandTotalsParams with all required parameters
 
     Returns:
         None (modifies workbook in place)
@@ -515,7 +566,8 @@ def write_england_totals(
     Raises:
         KeyError: If service_type not configured or required data missing
 
-    >>> from src.fft.writers import load_template, write_england_totals
+    >>> from src.fft.writers import load_template, write_england_totals,
+    ... WriteEnglandTotalsParams
     >>> import pandas as pd
     >>> wb = load_template('inpatient')
     >>> nat_df = pd.DataFrame({
@@ -532,7 +584,14 @@ def write_england_totals(
     ...     "Don't Know": [0, 0]
     ... })
     >>> counts = {'total_count': 150, 'nhs_count': 130, 'is1_count': 20}
-    >>> write_england_totals(wb, 'inpatient', nat_df, counts)
+    >>> params: WriteEnglandTotalsParams = {
+    ...     'workbook': wb,
+    ...     'service_type': 'inpatient',
+    ...     'national_df': nat_df,
+    ...     'org_counts': counts,
+    ...     'data_options': None
+    ... }
+    >>> write_england_totals(params)
     >>> wb['ICB'].cell(row=12, column=3).value
     np.int64(1000)
     >>> wb['ICB'].cell(row=12, column=5).value
@@ -540,12 +599,24 @@ def write_england_totals(
 
     # Edge case: Missing Submitter_Type
     >>> bad_df = pd.DataFrame({'Total Responses': [1000]})
-    >>> write_england_totals(wb, 'inpatient', bad_df, counts)
+    >>> params_bad: WriteEnglandTotalsParams = {
+    ...     'workbook': wb,
+    ...     'service_type': 'inpatient',
+    ...     'national_df': bad_df,
+    ...     'org_counts': counts,
+    ...     'data_options': None
+    ... }
+    >>> write_england_totals(params_bad)
     Traceback (most recent call last):
         ...
     KeyError: "'Submitter_Type' column not found in national_df"
 
     """
+    workbook = params["workbook"]
+    service_type = params["service_type"]
+    national_df = params["national_df"]
+    data_options = params["data_options"]
+
     # Extract data options with defaults
     data_options = data_options or {}
     all_level_data = data_options.get("all_level_data")
@@ -705,6 +776,36 @@ def _get_data_from_national(
         raise KeyError("national_df must contain 'Total' and 'NHS' rows")
 
     return total_row, nhs_row
+
+
+def _safe_write_cell(sheet, row, col, value):
+    """Write to cell, handling merged cells by writing to top-left cell.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        row: Row number (1-indexed)
+        col: Column number (1-indexed)
+        value: Value to write
+
+    Returns:
+        None (modifies sheet in place)
+
+    """
+    cell = sheet.cell(row=row, column=col)
+
+    if isinstance(cell, MergedCell):
+        for merged_range in sheet.merged_cells.ranges:
+            if (
+                merged_range.min_row <= row <= merged_range.max_row
+                and merged_range.min_col <= col <= merged_range.max_col
+            ):
+                top_left_cell = sheet.cell(
+                    row=merged_range.min_row, column=merged_range.min_col
+                )
+                top_left_cell.value = value
+                return
+
+    cell.value = value
 
 
 def _get_sheet_configuration(

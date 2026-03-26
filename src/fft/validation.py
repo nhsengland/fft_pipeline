@@ -3,10 +3,13 @@
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string, get_column_letter
+
+if TYPE_CHECKING:
+    from openpyxl.workbook import Workbook
 
 from fft.config import (
     CRITICAL_HEADER_CELLS,
@@ -38,6 +41,38 @@ class SheetResult(TypedDict):
     differences: list[CellDifference]
     missing_in_actual: bool
     missing_in_expected: bool
+
+
+class CompareDataByKeyParams(TypedDict):
+    """Parameters for compare_data_by_key function."""
+
+    expected_path: Path | str
+    actual_path: Path | str
+    sheet_name: str
+    key_column: str | list[str]
+    start_row: int
+    data_only: bool
+    actual_sheet_name: str | None
+
+
+class ValidateHeadersParams(TypedDict):
+    """Parameters for validate_headers function."""
+
+    pipeline_file: str | Path
+    ground_truth_file: str | Path
+    service_type: str
+    sheets_to_validate: list[str] | None
+    verbose: bool
+
+
+class CompareSheetHeadersParams(TypedDict):
+    """Parameters for _compare_sheet_headers function."""
+
+    sheet_name: str
+    wb_pipeline: "Workbook"
+    wb_ground_truth: "Workbook"
+    header_rows: int
+    service_type: str
 
 
 def compare_in_memory_cached_formulas(
@@ -389,43 +424,28 @@ def _find_cell_differences(
     return differences
 
 
-def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs all params
-    expected_path: Path | str,
-    actual_path: Path | str,
-    sheet_name: str,
-    *,
-    key_column: str | list[str] = "B",  # Single column or composite key columns
-    start_row: int = 15,
-    data_only: bool = True,
-    actual_sheet_name: str | None = None,
-) -> SheetResult:
+def compare_data_by_key(params: CompareDataByKeyParams) -> SheetResult:
     """Compare sheet data by matching records via key column(s) rather than row position.
 
     Args:
-        expected_path: Path to ground truth workbook
-        actual_path: Path to generated workbook
-        sheet_name: Name of sheet to compare
-        key_column: Column letter(s) for unique identification
-                   - Single column: "B" for Trust_Code
-                   - Composite key: ["B", "D", "F"] for Trust_Code + Site_Code + Ward_Name
-        start_row: First row of data
-        data_only: Compare values vs formulas
-        actual_sheet_name: Name of sheet in actual workbook if different from sheet_name
+        params: CompareDataByKeyParams with all required parameters
 
     Returns:
         SheetResult with differences between matching records
 
     """
-    expected_path = Path(expected_path)
-    actual_path = Path(actual_path)
+    expected_path = Path(params["expected_path"])
+    actual_path = Path(params["actual_path"])
+    sheet_name = params["sheet_name"]
+    actual_sheet_name = params["actual_sheet_name"]
 
     if not expected_path.exists():
         raise FileNotFoundError(f"Expected workbook not found: {expected_path}")
     if not actual_path.exists():
         raise FileNotFoundError(f"Actual workbook not found: {actual_path}")
 
-    wb_expected = load_workbook(expected_path, data_only=data_only)
-    wb_actual = load_workbook(actual_path, data_only=data_only)
+    wb_expected = load_workbook(expected_path, data_only=params["data_only"])
+    wb_actual = load_workbook(actual_path, data_only=params["data_only"])
 
     actual_sheet = actual_sheet_name or sheet_name
 
@@ -449,6 +469,10 @@ def compare_data_by_key(  # noqa: PLR0913 # Justified: validation function needs
 
     ws_expected = wb_expected[sheet_name]
     ws_actual = wb_actual[actual_sheet]
+
+    # Extract parameters from params
+    key_column = params["key_column"]
+    start_row = params["start_row"]
 
     # Build dictionaries mapping key -> row data
     expected_records = _extract_records_by_key(ws_expected, key_column, start_row)
@@ -788,13 +812,7 @@ def print_comparison_report(
     print(f"Summary: {identical_sheets}/{total_sheets} sheets identical")
 
 
-def validate_headers(
-    pipeline_file: str | Path,
-    ground_truth_file: str | Path,
-    service_type: str,
-    sheets_to_validate: list[str] | None = None,
-    verbose: bool = False,
-) -> dict[str, dict]:
+def validate_headers(params: ValidateHeadersParams) -> dict[str, dict]:
     """Validate that sheet headers match between pipeline and ground truth files.
 
     This function performs CRUCIAL validation to ensure that:
@@ -803,11 +821,7 @@ def validate_headers(
     3. Critical cells contain expected values
 
     Args:
-        pipeline_file: Path to pipeline-generated Excel file
-        ground_truth_file: Path to ground truth Excel file
-        service_type: Service type (inpatient, ae, ambulance)
-        sheets_to_validate: List of sheets to validate (None for all sheets)
-        verbose: Whether to print detailed output
+        params: ValidateHeadersParams with all required parameters
 
     Returns:
         dict: Validation results by sheet, with differences if any
@@ -819,6 +833,7 @@ def validate_headers(
     >>> from pathlib import Path
     >>> import tempfile
     >>> from openpyxl import Workbook
+    >>> from src.fft.validation import ValidateHeadersParams
 
     # Test with identical headers (using correct row range for inpatient Trusts sheet)
     >>> with tempfile.TemporaryDirectory() as tmpdir:
@@ -834,7 +849,14 @@ def validate_headers(
     ...     wb2["Trusts"]["A10"] = "ICB Code"
     ...     wb2["Trusts"]["B10"] = "Trust Code"
     ...     wb2.save(ground_truth)
-    ...     results = validate_headers(pipeline, ground_truth, "inpatient", ["Trusts"])
+    ...     params: ValidateHeadersParams = {
+    ...         'pipeline_file': pipeline,
+    ...         'ground_truth_file': ground_truth,
+    ...         'service_type': 'inpatient',
+    ...         'sheets_to_validate': ['Trusts'],
+    ...         'verbose': False
+    ...     }
+    ...     results = validate_headers(params)
     ...     results["Trusts"]["identical"]
     True
 
@@ -850,13 +872,20 @@ def validate_headers(
     ...     wb2.active.title = "Trusts"
     ...     wb2["Trusts"]["A10"] = "ICB_Name"  # Different!
     ...     wb2.save(ground_truth)
-    ...     results = validate_headers(pipeline, ground_truth, "inpatient", ["Trusts"])
+    ...     params: ValidateHeadersParams = {
+    ...         'pipeline_file': pipeline,
+    ...         'ground_truth_file': ground_truth,
+    ...         'service_type': 'inpatient',
+    ...         'sheets_to_validate': ['Trusts'],
+    ...         'verbose': False
+    ...     }
+    ...     results = validate_headers(params)
     ...     results["Trusts"]["identical"]
     False
 
     """
     pipeline_path, ground_truth_path = _validate_header_files(
-        pipeline_file, ground_truth_file, service_type
+        params["pipeline_file"], params["ground_truth_file"], params["service_type"]
     )
 
     wb_pipeline, wb_ground_truth = _load_header_workbooks(
@@ -864,16 +893,16 @@ def validate_headers(
     )
 
     sheets_to_validate = _determine_sheets_to_validate(
-        sheets_to_validate, wb_pipeline, wb_ground_truth, service_type
+        params["sheets_to_validate"], wb_pipeline, wb_ground_truth, params["service_type"]
     )
 
     results = {}
-    header_rows = HEADER_ROWS_BY_SERVICE[service_type]
+    header_rows = HEADER_ROWS_BY_SERVICE[params["service_type"]]
 
     config = {
         "header_rows": header_rows,
-        "verbose": verbose,
-        "service_type": service_type,
+        "verbose": params["verbose"],
+        "service_type": params["service_type"],
     }
     for sheet_name in sheets_to_validate:
         results[sheet_name] = _validate_single_sheet(
@@ -1059,7 +1088,13 @@ def _validate_single_sheet(
 
     # Compare headers
     comparison_result = _compare_sheet_headers(
-        sheet_name, wb_pipeline, wb_ground_truth, header_rows, service_type
+        CompareSheetHeadersParams(
+            sheet_name=sheet_name,
+            wb_pipeline=wb_pipeline,
+            wb_ground_truth=wb_ground_truth,
+            header_rows=header_rows,
+            service_type=service_type,
+        )
     )
 
     # Add verbose output if requested
@@ -1088,12 +1123,19 @@ def _check_sheet_existence(sheet_name: str, wb_pipeline, wb_ground_truth) -> dic
     return None
 
 
-def _compare_sheet_headers(
-    sheet_name: str, wb_pipeline, wb_ground_truth, header_rows: int, service_type: str
-) -> dict:
-    """Compare headers between pipeline and ground truth sheets."""
-    sheet_pipeline = wb_pipeline[sheet_name]
-    sheet_ground_truth = wb_ground_truth[sheet_name]
+def _compare_sheet_headers(params: CompareSheetHeadersParams) -> dict:
+    """Compare headers between pipeline and ground truth sheets.
+
+    Args:
+        params: CompareSheetHeadersParams with all required parameters
+
+    Returns:
+        dict with comparison results including identical status, differences,
+        and critical differences
+
+    """
+    sheet_pipeline = params["wb_pipeline"][params["sheet_name"]]
+    sheet_ground_truth = params["wb_ground_truth"][params["sheet_name"]]
 
     all_differences = []
     critical_differences = []
@@ -1103,13 +1145,15 @@ def _compare_sheet_headers(
     max_col = min(sheet_pipeline.max_column, sheet_ground_truth.max_column)
 
     # Get the precise row range for this sheet and service type
-    row_range = HEADER_ROW_RANGES_BY_SERVICE.get(service_type, {}).get(sheet_name)
+    row_range = HEADER_ROW_RANGES_BY_SERVICE.get(params["service_type"], {}).get(
+        params["sheet_name"]
+    )
     if row_range:
         start_row, end_row = row_range
     else:
         # Fallback to original behavior for backward compatibility
         start_row = 1
-        end_row = header_rows
+        end_row = params["header_rows"]
 
     for row in range(start_row, end_row + 1):
         for col in range(1, max_col + 1):
@@ -1147,7 +1191,7 @@ def _compare_sheet_headers(
                 }
                 all_differences.append(diff)
 
-                if cell_ref in CRITICAL_HEADER_CELLS.get(sheet_name, []):
+                if cell_ref in CRITICAL_HEADER_CELLS.get(params["sheet_name"], []):
                     critical_differences.append(diff)
 
     return {
