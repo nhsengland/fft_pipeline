@@ -45,6 +45,11 @@ from fft.config import (
 # Constants for UI
 MAX_FILES_DISPLAYED = 12  # Maximum files to show in file list before truncating
 
+# Build path to the venv's own Python (not the base interpreter)
+_bin = "Scripts" if sys.platform == "win32" else "bin"
+_pyname = "python.exe" if sys.platform == "win32" else "python"
+VENV_PYTHON = str(Path(sys.prefix) / _bin / _pyname)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -727,7 +732,8 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
             )
             return False, error_msg
         flag = [k for k, v in SERVICE_TYPES.items() if v == service][0]
-        cmd = [sys.executable, "-m", "fft", f"--{flag}"]
+        cmd = [VENV_PYTHON, "-m", "fft", f"--{flag}"]
+
         if month and month != "all":
             cmd.extend(["--month", month])
 
