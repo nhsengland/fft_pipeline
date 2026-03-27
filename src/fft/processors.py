@@ -668,6 +668,38 @@ def convert_fft_period_to_datetime(fft_period: str):
     return pd.Timestamp(year_full, month_num, 1)
 
 
+def _initialize_response_data(provider_types: list[str]) -> tuple:
+    """Initialize response data dictionaries with 'NA' values.
+
+    Args:
+        provider_types: List of provider type keys
+
+    Returns:
+        Tuple of (orgs_submitting, responses_current, responses_previous,
+                  responses_to_date, pct_positive_current, pct_positive_previous,
+                  pct_negative_current, pct_negative_previous)
+
+    """
+    orgs_submitting = {key: "NA" for key in provider_types}
+    responses_current = {key: "NA" for key in provider_types}
+    responses_previous = {key: "NA" for key in provider_types}
+    responses_to_date = {key: "NA" for key in provider_types}
+    pct_positive_current = {key: "NA" for key in provider_types}
+    pct_positive_previous = {key: "NA" for key in provider_types}
+    pct_negative_current = {key: "NA" for key in provider_types}
+    pct_negative_previous = {key: "NA" for key in provider_types}
+    return (
+        orgs_submitting,
+        responses_current,
+        responses_previous,
+        responses_to_date,
+        pct_positive_current,
+        pct_positive_previous,
+        pct_negative_current,
+        pct_negative_previous,
+    )
+
+
 def extract_summary_data(
     time_series_df: pd.DataFrame,
     service_type: str,
@@ -818,17 +850,17 @@ def extract_summary_data(
             return 0
         return (likely_val + extremely_likely_val) / responses_val
 
-    # Get provider types for this service
-    # Initialize ALL values to "NA" first (matching VBA line 37)
     provider_types = list(summary_config["orgs_submitting"].keys())
-    orgs_submitting = {key: "NA" for key in provider_types}
-    responses_current = {key: "NA" for key in provider_types}
-    responses_previous = {key: "NA" for key in provider_types}
-    responses_to_date = {key: "NA" for key in provider_types}
-    pct_positive_current = {key: "NA" for key in provider_types}
-    pct_positive_previous = {key: "NA" for key in provider_types}
-    pct_negative_current = {key: "NA" for key in provider_types}
-    pct_negative_previous = {key: "NA" for key in provider_types}
+    (
+        orgs_submitting,
+        responses_current,
+        responses_previous,
+        responses_to_date,
+        pct_positive_current,
+        pct_positive_previous,
+        pct_negative_current,
+        pct_negative_previous,
+    ) = _initialize_response_data(provider_types)
 
     # Selectively overwrite only values that VBA sets
     orgs_cols = summary_config["orgs_submitting"]

@@ -282,6 +282,91 @@ def add_terminating_row(
 
 
 # %%
+def _sort_pair_if_needed(pair: tuple[str, ...], data: pd.DataFrame) -> pd.DataFrame:
+    """Sort a pair of columns together to maintain relationship.
+
+    Args:
+        pair: Tuple of column names to sort together
+        data: DataFrame with the pair columns
+
+    Returns:
+        DataFrame with pair columns sorted by first column
+
+    """
+    unique_pair = data[list(pair)].drop_duplicates()
+
+    if len(pair) > 1:
+        sorted_pair = (
+            unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+        )
+    else:
+        sorted_pair = (
+            unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+        )
+
+    return sorted_pair
+
+
+
+def _write_region_reference(
+    sheet,
+    region_config: dict,
+    region_start_col: int,
+    region_start_row: int,
+    ward_df: pd.DataFrame,
+) -> int:
+    """Write region reference data to worksheet, returning column offset.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        region_config: Region reference configuration dict
+        region_start_col: Starting column for region reference
+        region_start_row: Starting row for region reference
+        ward_df: DataFrame with ward data
+
+    Returns:
+        Updated column offset after writing
+
+    """
+    region_pairs = region_config["pairs"]
+    col_offset = 0
+    for pair in region_pairs:
+        sorted_pair = _sort_pair_if_needed(pair, ward_df)
+        for pair_col_idx, col_name in enumerate(pair):
+            sorted_values = sorted_pair[col_name]
+            for row_idx, value in enumerate(sorted_values, start=region_start_row):
+                sheet.cell(
+                    row=row_idx, column=region_start_col + col_offset + pair_col_idx
+                ).value = value
+        col_offset += len(pair)
+    return col_offset
+
+
+def _write_linked_lists(
+    sheet, linked_lists_config: dict, ward_df: pd.DataFrame
+) -> None:
+    """Write linked lists data to worksheet.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        linked_lists_config: Linked lists configuration dict
+        ward_df: DataFrame with ward data
+
+    """
+    for level, level_config in linked_lists_config.items():
+        start_col = level_config["start_col"]
+        pairs = level_config["pairs"]
+        col_offset = 0
+        for pair in pairs:
+            sorted_pair = _sort_pair_if_needed(pair, ward_df)
+            for pair_col_idx, col_name in enumerate(pair):
+                sorted_values = sorted_pair[col_name]
+                for row_idx, value in enumerate(sorted_values, start=2):
+                    sheet.cell(
+                        row=row_idx, column=start_col + col_offset + pair_col_idx
+                    ).value = value
+            col_offset += len(pair)
+
 def write_bs_lookup_data(
     workbook: Workbook, ward_df: pd.DataFrame, service_type: str
 ) -> None:
@@ -391,67 +476,12 @@ def write_bs_lookup_data(
         region_config = config["region_reference"]
         region_start_col = region_config["start_col"]
         region_start_row = region_config["start_row"]
-        region_pairs = region_config["pairs"]
-
-        # For A&E, treat ICBs as regions by using ICB data for region reference
-        col_offset = 0
-        for pair in region_pairs:
-            # Use unique ICB pairs from the data
-            unique_pair = ward_df[pair].drop_duplicates()
-
-            # Sort pairs together to maintain code-to-name relationship
-            if len(pair) > 1:
-                # Sort by first column (typically the code) to maintain pairing
-                sorted_pair = (
-                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-                )
-            else:
-                sorted_pair = (
-                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-                )
-
-            # Write each column from the sorted pairs
-            for pair_col_idx, col_name in enumerate(pair):
-                sorted_values = sorted_pair[col_name]
-
-                for row_idx, value in enumerate(sorted_values, start=region_start_row):
-                    sheet.cell(
-                        row=row_idx, column=region_start_col + col_offset + pair_col_idx
-                    ).value = value
-
-            col_offset += len(pair)
+        _write_region_reference(
+            sheet, region_config, region_start_col, region_start_row, ward_df
+        )
 
     # 3. Write Linked Lists (dedupe pairs, sort pairs together maintaining relationships)
-    for level, level_config in config["linked_lists"].items():
-        start_col = level_config["start_col"]
-        pairs = level_config["pairs"]
-
-        col_offset = 0
-        for pair in pairs:
-            # Deduplicate the pair together
-            unique_pair = ward_df[pair].drop_duplicates()
-
-            # Sort pairs together to maintain relationships (e.g., code-to-name pairing)
-            if len(pair) > 1:
-                # Sort by first column (typically the code) to maintain pairing
-                sorted_pair = (
-                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-                )
-            else:
-                sorted_pair = (
-                    unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-                )
-
-            # Write each column from the sorted pairs
-            for pair_col_idx, col_name in enumerate(pair):
-                sorted_values = sorted_pair[col_name]
-
-                for row_idx, value in enumerate(sorted_values, start=2):
-                    sheet.cell(
-                        row=row_idx, column=start_col + col_offset + pair_col_idx
-                    ).value = value
-
-            col_offset += len(pair)
+    _write_linked_lists(sheet, config["linked_lists"], ward_df)
 
 
 # %%
@@ -952,6 +982,67 @@ def get_cached_formula_results(sheet, row: int = None) -> dict:
     return sheet._fft_cached_formulas.get(row, {})
 
 
+def _collect_formula_cells(sheet) -> dict:
+    """Collect formula cells grouped by row.
+
+    Args:
+        sheet: Openpyxl worksheet object
+
+    Returns:
+        Dict mapping row numbers to lists of formula cells
+
+    """
+    formula_cells_by_row = {}
+    for row in sheet.iter_rows():
+        for cell in row:
+            if cell.data_type == "f" and isinstance(cell.value, str):
+                row_num = cell.row
+                if row_num not in formula_cells_by_row:
+                    formula_cells_by_row[row_num] = []
+                formula_cells_by_row[row_num].append(cell)
+    return formula_cells_by_row
+
+
+def _process_row_formulas(sheet, row_num: int, cells: list):
+    """Process formulas for a single row, caching results.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        row_num: Row number to process
+        cells: List of formula cells in this row
+
+    """
+    row_cache = {}
+
+    # First pass: Calculate SUBTOTAL formulas (no dependencies)
+    for cell in cells:
+        if "SUBTOTAL(" in cell.value:
+            try:
+                result = _calculate_formula_result(sheet, cell)
+                if result is not None:
+                    row_cache[cell.coordinate] = result
+            except (IndexError, ValueError, AttributeError, ZeroDivisionError):
+                pass
+
+    # Update sheet cache after first pass so IFERROR formulas can use results
+    if row_cache:
+        sheet._fft_cached_formulas[row_num] = row_cache
+
+    # Second pass: Calculate IFERROR formulas (may depend on SUBTOTAL results)
+    for cell in cells:
+        if "IFERROR(" in cell.value and cell.coordinate not in row_cache:
+            try:
+                result = _calculate_formula_result(sheet, cell)
+                if result is not None:
+                    row_cache[cell.coordinate] = result
+            except (IndexError, ValueError, AttributeError, ZeroDivisionError):
+                pass
+
+    # Update final cache
+    if row_cache:
+        sheet._fft_cached_formulas[row_num] = row_cache
+
+
 def _cache_all_formula_results(workbook: Workbook) -> None:
     """Cache all formula results in the workbook for validation.
 
@@ -968,49 +1059,11 @@ def _cache_all_formula_results(workbook: Workbook) -> None:
     """
     for sheet in workbook.worksheets:
         sheet._fft_cached_formulas = {}
+        formula_cells_by_row = _collect_formula_cells(sheet)
 
-        # Collect all formula cells, grouped by type and row
-        formula_cells_by_row = {}
-        for row in sheet.iter_rows():
-            for cell in row:
-                if cell.data_type == "f" and isinstance(cell.value, str):
-                    row_num = cell.row
-                    if row_num not in formula_cells_by_row:
-                        formula_cells_by_row[row_num] = []
-                    formula_cells_by_row[row_num].append(cell)
-
-        # Process each row
         for row_num in sorted(formula_cells_by_row.keys()):
             cells = formula_cells_by_row[row_num]
-            row_cache = {}
-
-            # First pass: Calculate SUBTOTAL formulas (no dependencies)
-            for cell in cells:
-                if "SUBTOTAL(" in cell.value:
-                    try:
-                        result = _calculate_formula_result(sheet, cell)
-                        if result is not None:
-                            row_cache[cell.coordinate] = result
-                    except (IndexError, ValueError, AttributeError, ZeroDivisionError):
-                        pass
-
-            # Update sheet cache after first pass so IFERROR formulas can use results
-            if row_cache:
-                sheet._fft_cached_formulas[row_num] = row_cache
-
-            # Second pass: Calculate IFERROR formulas (may depend on SUBTOTAL results)
-            for cell in cells:
-                if "IFERROR(" in cell.value and cell.coordinate not in row_cache:
-                    try:
-                        result = _calculate_formula_result(sheet, cell)
-                        if result is not None:
-                            row_cache[cell.coordinate] = result
-                    except (IndexError, ValueError, AttributeError, ZeroDivisionError):
-                        pass
-
-            # Update final cache
-            if row_cache:
-                sheet._fft_cached_formulas[row_num] = row_cache
+            _process_row_formulas(sheet, row_num, cells)
 
 
 def _calculate_formula_result(sheet, cell):
