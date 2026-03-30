@@ -586,7 +586,10 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
             f"{successful_files}/{len(files)} files"
         )
     elif successful_files == 0:
-        logger.error(f"✗ Pipeline failed - 0/{len(files)} files processed successfully")
+        logger.error(
+            "✗ Pipeline failed - 0/"
+            f"{len(files)} files processed successfully"
+        )
         raise RuntimeError(f"All {len(files)} files failed to process")
     else:
         logger.warning(
@@ -595,7 +598,8 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
             f"{failed_files} failed"
         )
         raise RuntimeError(
-            f"Pipeline completed with {failed_files} failures out of {len(files)} files"
+            "Pipeline completed with "
+            f"{failed_files} failures out of {len(files)} files"
         )
 
 
