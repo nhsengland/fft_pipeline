@@ -230,6 +230,9 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
 
     for row_idx, row in enumerate(params["df"].itertuples(index=False), start=start_row):
         for col_idx, cell_value in enumerate(row, start=start_col):
+            # Convert NaN values to "NA" string (matching VBA pre-fill behavior)
+            if isinstance(cell_value, float) and pd.isna(cell_value):
+                cell_value = "NA"
             _safe_write_cell(sheet, row_idx, col_idx, cell_value)
 
             cell = sheet.cell(row=row_idx, column=col_idx)
@@ -237,11 +240,9 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
                 continue
 
             # Set appropriate number format based on column type
-            # Numbers in percentage columns get percentage format, all else keeps "General"
+            # Numbers in percentage columns get percentage format, all else preserves template formatting
             if isinstance(cell_value, numbers.Number) and col_idx in percentage_columns:
                 cell.number_format = PERCENTAGE_NUMBER_FORMAT
-            else:
-                cell.number_format = "General"
 
         # Apply centre alignment to this row's data cells (only cells we wrote to)
         if params.get("service_type"):
