@@ -19,6 +19,7 @@ from fft.config import (
     ENGLAND_ROWS_SKIP_COLUMNS,
     ENGLAND_TOTALS_DATA_SOURCE,
     IS1_CODE,
+    LIKERT_COLS,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
@@ -28,8 +29,11 @@ from fft.config import (
     SUMMARY_SHEET_CONFIG,
     TEMPLATE_CONFIG,
     TEMPLATES_DIR,
+    TOTALS_COLS,
+    _EXCLUDED_SHEETS,
     get_count_columns_for_service,
 )
+
 from fft.loaders import load_collections_overview
 from fft.processors import extract_summary_data
 
@@ -228,26 +232,27 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
         for col_idx, cell_value in enumerate(row, start=start_col):
             _safe_write_cell(sheet, row_idx, col_idx, cell_value)
 
-            if sheet.cell(row=row_idx, column=col_idx).value != "-":
-                cell = sheet.cell(row=row_idx, column=col_idx)
+            cell = sheet.cell(row=row_idx, column=col_idx)
+            if cell.value is None or cell.value == "-":
+                continue
 
-                # Set appropriate number format based on data type and column
-                if (
-                    col_idx in percentage_columns
-                    and isinstance(cell_value, numbers.Number)
-                    and cell_value != "*"
-                ):
-                    cell.number_format = PERCENTAGE_NUMBER_FORMAT
-                elif isinstance(cell_value, numbers.Number):
-                    if isinstance(cell_value, (int, numbers.Integral)) or (
-                        isinstance(cell_value, numbers.Real)
-                        and float(cell_value).is_integer()
-                    ):
-                        cell.number_format = PERCENTAGE_NUMBER_FORMAT
-                    else:
-                        cell.number_format = "General"
-                else:
-                    cell.number_format = "General"
+            # Set appropriate number format based on column type
+            # Numbers in percentage columns get percentage format, all else keeps "General"
+            if isinstance(cell_value, numbers.Number) and col_idx in percentage_columns:
+                cell.number_format = PERCENTAGE_NUMBER_FORMAT
+            else:
+                cell.number_format = "General"
+
+        # Apply centre alignment to this row's data cells (only cells we wrote to)
+        if params.get("service_type"):
+            _apply_centre_alignment_to_row(
+                params["workbook"],
+                service_type,
+                sheet_name,
+                row_idx,
+                start_col,
+                start_col + len(row) - 1,
+            )
 
 
 def add_terminating_row(
@@ -281,6 +286,119 @@ def add_terminating_row(
         sheet.delete_cols(num_columns + 1, sheet.max_column - num_columns)
 
 
+def _apply_centre_alignment_to_row(
+    workbook: Workbook,
+    service_type: str | None,
+    sheet_name: str | None,
+    row: int,
+    start_col: int,
+    end_col: int,
+) -> None:
+    """Apply centre alignment to a specific row range in a sheet.
+
+    Args:
+        workbook: Openpyxl Workbook object
+        service_type: 'inpatient', 'ae', or 'ambulance'
+        sheet_name: Name of sheet to target
+        row: Row number to apply alignment (1-indexed)
+        start_col: Starting column (1-indexed)
+        end_col: Ending column (1-indexed)
+
+    Returns:
+        None (modifies workbook in place)
+
+    """
+    if service_type not in TEMPLATE_CONFIG:
+        return
+
+    if sheet_name not in workbook.sheetnames:
+        return
+
+    # Skip Notes sheet - it should remain left-aligned
+    if sheet_name == "Notes":
+        return
+
+    sheet = workbook[sheet_name]
+
+    for col in range(start_col, end_col + 1):
+        cell = sheet.cell(row=row, column=col)
+
+        # Skip empty cells or placeholder markers
+        if cell.value is None or cell.value == "-":
+            continue
+
+        # Skip if already centre-aligned
+        if cell.alignment and getattr(cell.alignment, "horizontal", None) == "center":
+            continue
+
+        # Apply centre alignment (openpyxl preserves other properties like font size)
+        cell.alignment = Alignment(horizontal="center")
+
+
+def _apply_centre_alignment(
+    workbook: Workbook, service_type: str, sheet_name: str | None = None
+) -> None:
+    """Apply centre alignment to data cells in specified sheets.
+
+    Applies centre alignment to all data cells (row >= data_start_row) in sheets
+    excluding the Notes sheet. Handles numeric and string data cells.
+
+    Args:
+        workbook: Openpyxl Workbook object
+        service_type: 'inpatient', 'ae', or 'ambulance'
+        sheet_name: Optional specific sheet to target. If None, applies to all data sheets
+
+    Returns:
+        None (modifies workbook in place)
+
+    """
+    if service_type not in TEMPLATE_CONFIG:
+        return
+
+    config = TEMPLATE_CONFIG[service_type]
+    data_start_row = config["data_start_row"]
+
+    # Determine which sheets to process
+    if sheet_name is not None:
+        # Apply to specific sheet only
+        if sheet_name not in workbook.sheetnames:
+            return
+        sheets_to_process = [sheet_name]
+    else:
+        # Apply to all sheets
+        sheets_to_process = workbook.sheetnames
+
+    for target_sheet in sheets_to_process:
+        sheet = workbook[target_sheet]
+
+        # Skip Notes sheet - it should remain left-aligned
+        if target_sheet == "Notes":
+            continue
+
+        # Skip non-data sheets
+        exclude_suffixes = ("Macro", "VBA")
+        if any(target_sheet.endswith(suffix) for suffix in exclude_suffixes):
+            continue
+
+        for row in range(data_start_row, sheet.max_row + 1):
+            for col in range(1, sheet.max_column + 1):
+                cell = sheet.cell(row=row, column=col)
+
+                # Skip empty cells or placeholder markers
+                if cell.value is None or cell.value == "-":
+                    continue
+
+                # Skip if already centre-aligned
+                if (
+                    cell.alignment
+                    and getattr(cell.alignment, "horizontal", None) == "center"
+                ):
+                    continue
+
+                # Apply centre alignment (openpyxl preserves other properties like font size)
+                cell.alignment = Alignment(horizontal="center")
+
+
 # %%
 def _sort_pair_if_needed(pair: tuple[str, ...], data: pd.DataFrame) -> pd.DataFrame:
     """Sort a pair of columns together to maintain relationship.
@@ -305,7 +423,6 @@ def _sort_pair_if_needed(pair: tuple[str, ...], data: pd.DataFrame) -> pd.DataFr
         )
 
     return sorted_pair
-
 
 
 def _write_region_reference(
@@ -342,9 +459,7 @@ def _write_region_reference(
     return col_offset
 
 
-def _write_linked_lists(
-    sheet, linked_lists_config: dict, ward_df: pd.DataFrame
-) -> None:
+def _write_linked_lists(sheet, linked_lists_config: dict, ward_df: pd.DataFrame) -> None:
     """Write linked lists data to worksheet.
 
     Args:
@@ -366,6 +481,7 @@ def _write_linked_lists(
                         row=row_idx, column=start_col + col_offset + pair_col_idx
                     ).value = value
             col_offset += len(pair)
+
 
 def write_bs_lookup_data(
     workbook: Workbook, ward_df: pd.DataFrame, service_type: str
@@ -670,6 +786,9 @@ def write_england_totals(params: WriteEnglandTotalsParams) -> None:
         }
         options = {"all_level_data": all_level_data}
         _process_single_sheet(workbook, sheet_name, config, national_df, options)
+
+    # Apply centre alignment to all data sheets
+    _apply_centre_alignment(workbook, service_type)
 
 
 def _validate_england_totals_inputs(service_type: str, national_df: pd.DataFrame) -> None:
@@ -1493,6 +1612,9 @@ def write_summary_sheet(
             if data_key in summary_data and provider_key in summary_data[data_key]:
                 value = summary_data[data_key][provider_key]
                 safe_write_cell(sheet, row, col, value)
+
+    # Apply centre alignment to Summary sheet
+    _apply_centre_alignment(workbook, service_type, "Summary")
 
 
 # %%
