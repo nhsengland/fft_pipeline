@@ -19,7 +19,6 @@ from fft.config import (
     ENGLAND_ROWS_SKIP_COLUMNS,
     ENGLAND_TOTALS_DATA_SOURCE,
     IS1_CODE,
-    LIKERT_COLS,
     OUTPUT_COLUMNS,
     OUTPUTS_DIR,
     PERCENTAGE_COLUMN_CONFIG,
@@ -29,11 +28,8 @@ from fft.config import (
     SUMMARY_SHEET_CONFIG,
     TEMPLATE_CONFIG,
     TEMPLATES_DIR,
-    TOTALS_COLS,
-    _EXCLUDED_SHEETS,
     get_count_columns_for_service,
 )
-
 from fft.loaders import load_collections_overview
 from fft.processors import extract_summary_data
 
@@ -237,8 +233,8 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
         for col_idx, cell_value in enumerate(row, start=start_col):
             # Convert NaN values to "NA" string (matching VBA pre-fill behavior)
             if isinstance(cell_value, float) and pd.isna(cell_value):
-                cell_value = "NA"
-            _safe_write_cell(sheet, row_idx, col_idx, cell_value)
+                cell_val = "NA"
+            _safe_write_cell(sheet, row_idx, col_idx, cell_val)
             written_cells.append((row_idx, col_idx))
 
             cell = sheet.cell(row=row_idx, column=col_idx)
@@ -246,12 +242,14 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
                 continue
 
             # Set appropriate number format based on column type
-            # Numbers in percentage columns get percentage format, all else preserves template formatting
+            # Numbers in percentage columns get percentage format,
+            # all else preserves template formatting
             if isinstance(cell_value, numbers.Number) and col_idx in percentage_columns:
                 cell.number_format = PERCENTAGE_NUMBER_FORMAT
 
     # Apply font homogenization: use first data row's font FOR EACH COLUMN
-    # This preserves column-specific fonts from the template (e.g., ICB Code vs Org Name columns)
+    # This preserves column-specific fonts from the template
+    # (e.g., ICB Code vs Org Name columns)
     if written_cells:
         # Group cells by column
         cells_by_col = {}
@@ -260,7 +258,7 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
                 cells_by_col[col_idx] = []
             cells_by_col[col_idx].append(row_idx)
 
-        # For each column, get the font from the first row and apply to all rows in that column
+        # Get the font from the first row per column and apply to all rows in that column
         for col_idx, row_indices in cells_by_col.items():
             reference_row = row_indices[0]
             reference_font = sheet.cell(row=reference_row, column=col_idx).font
@@ -344,13 +342,7 @@ def apply_alignment_to_workbook(workbook: Workbook, service_type: str) -> None:
 
         # Apply centre alignment to all cells in the data range at once
         # for performance - this is much faster than per-cell iteration
-        from openpyxl.utils import get_column_letter
-
         if sheet.max_row >= data_start_row and sheet.max_column >= 1:
-            # Get data range starting from data_start_row to max_row, columns 1 to max_column
-            from openpyxl.formatting.rule import CellIsRule
-            from openpyxl.styles import PatternFill
-
             # Use batch approach: set alignment for entire data range
             # This is O(1) instead of O(n) per cell
             for row_idx, row in enumerate(
