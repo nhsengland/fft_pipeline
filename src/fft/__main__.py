@@ -49,6 +49,7 @@ from fft.validation import (
 from fft.writers import (
     WriteDataFrameToSheetParams,
     WriteEnglandTotalsParams,
+    apply_alignment_to_workbook,
     format_percentage_columns,
     load_template,
     populate_summary_sheet,
@@ -336,6 +337,10 @@ def process_single_file(  # noqa: PLR0912,PLR0915 # Justified: Sequential ETL pi
     logger.info("Formatting percentage columns...")
     format_percentage_columns(wb, service_type)
 
+    # Apply centre alignment for all sheets (single post-processing pass)
+    logger.info("Applying centre alignment to workbook...")
+    apply_alignment_to_workbook(wb, service_type)
+
     # Step 18: Save output
     logger.info("Saving output...")
     output_path = save_output(wb, service_type, fft_period)
@@ -586,10 +591,7 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
             f"{successful_files}/{len(files)} files"
         )
     elif successful_files == 0:
-        logger.error(
-            "✗ Pipeline failed - 0/"
-            f"{len(files)} files processed successfully"
-        )
+        logger.error(f"✗ Pipeline failed - 0/{len(files)} files processed successfully")
         raise RuntimeError(f"All {len(files)} files failed to process")
     else:
         logger.warning(
@@ -598,8 +600,7 @@ def run_pipeline(service_type: str, month: str | None = None) -> None:
             f"{failed_files} failed"
         )
         raise RuntimeError(
-            "Pipeline completed with "
-            f"{failed_files} failures out of {len(files)} files"
+            f"Pipeline completed with {failed_files} failures out of {len(files)} files"
         )
 
 

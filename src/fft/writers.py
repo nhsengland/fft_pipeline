@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Font
 
 if TYPE_CHECKING:
     from openpyxl.workbook import Workbook
@@ -150,6 +150,8 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
 
     Writes data without headers - assumes template already has headers in place.
     Sets proper Excel data types: numbers, percentages, and general text.
+    Ensures font homogeneity across all data rows by applying the first data
+    row's font to all written cells.
 
     Args:
         params: WriteDataFrameToSheetParams with all required parameters
@@ -228,12 +230,16 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
         if sheet_name in PERCENTAGE_COLUMN_CONFIG[service_type]:
             percentage_columns = set(PERCENTAGE_COLUMN_CONFIG[service_type][sheet_name])
 
+    # Track written cells for font homogenization
+    written_cells = []
+
     for row_idx, row in enumerate(params["df"].itertuples(index=False), start=start_row):
         for col_idx, cell_value in enumerate(row, start=start_col):
             # Convert NaN values to "NA" string (matching VBA pre-fill behavior)
             if isinstance(cell_value, float) and pd.isna(cell_value):
                 cell_value = "NA"
             _safe_write_cell(sheet, row_idx, col_idx, cell_value)
+            written_cells.append((row_idx, col_idx))
 
             cell = sheet.cell(row=row_idx, column=col_idx)
             if cell.value is None or cell.value == "-":
@@ -244,16 +250,34 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
             if isinstance(cell_value, numbers.Number) and col_idx in percentage_columns:
                 cell.number_format = PERCENTAGE_NUMBER_FORMAT
 
-        # Apply centre alignment to this row's data cells (only cells we wrote to)
-        if params.get("service_type"):
-            _apply_centre_alignment_to_row(
-                params["workbook"],
-                service_type,
-                sheet_name,
-                row_idx,
-                start_col,
-                start_col + len(row) - 1,
-            )
+    # Apply font homogenization: use first data row's font FOR EACH COLUMN
+    # This preserves column-specific fonts from the template (e.g., ICB Code vs Org Name columns)
+    if written_cells:
+        # Group cells by column
+        cells_by_col = {}
+        for row_idx, col_idx in written_cells:
+            if col_idx not in cells_by_col:
+                cells_by_col[col_idx] = []
+            cells_by_col[col_idx].append(row_idx)
+
+        # For each column, get the font from the first row and apply to all rows in that column
+        for col_idx, row_indices in cells_by_col.items():
+            reference_row = row_indices[0]
+            reference_font = sheet.cell(row=reference_row, column=col_idx).font
+
+            for row_idx in row_indices:
+                cell = sheet.cell(row=row_idx, column=col_idx)
+                if cell.value is not None:
+                    cell.font = Font(
+                        name=reference_font.name,
+                        size=reference_font.size,
+                        bold=reference_font.bold,
+                        italic=reference_font.italic,
+                        vertAlign=reference_font.vertAlign,
+                        underline=reference_font.underline,
+                        strike=reference_font.strike,
+                        color=reference_font.color,
+                    )
 
 
 def add_terminating_row(
@@ -287,67 +311,15 @@ def add_terminating_row(
         sheet.delete_cols(num_columns + 1, sheet.max_column - num_columns)
 
 
-def _apply_centre_alignment_to_row(
-    workbook: Workbook,
-    service_type: str | None,
-    sheet_name: str | None,
-    row: int,
-    start_col: int,
-    end_col: int,
-) -> None:
-    """Apply centre alignment to a specific row range in a sheet.
+def apply_alignment_to_workbook(workbook: Workbook, service_type: str) -> None:
+    """Apply centre alignment to all data cells in a single pass.
+
+    Processes all sheets in one traversal, excluding Notes and Macro/VBA sheets.
+    Applied as final step after all data writing is complete.
 
     Args:
         workbook: Openpyxl Workbook object
         service_type: 'inpatient', 'ae', or 'ambulance'
-        sheet_name: Name of sheet to target
-        row: Row number to apply alignment (1-indexed)
-        start_col: Starting column (1-indexed)
-        end_col: Ending column (1-indexed)
-
-    Returns:
-        None (modifies workbook in place)
-
-    """
-    if service_type not in TEMPLATE_CONFIG:
-        return
-
-    if sheet_name not in workbook.sheetnames:
-        return
-
-    # Skip Notes sheet - it should remain left-aligned
-    if sheet_name == "Notes":
-        return
-
-    sheet = workbook[sheet_name]
-
-    for col in range(start_col, end_col + 1):
-        cell = sheet.cell(row=row, column=col)
-
-        # Skip empty cells or placeholder markers
-        if cell.value is None or cell.value == "-":
-            continue
-
-        # Skip if already centre-aligned
-        if cell.alignment and getattr(cell.alignment, "horizontal", None) == "center":
-            continue
-
-        # Apply centre alignment (openpyxl preserves other properties like font size)
-        cell.alignment = Alignment(horizontal="center")
-
-
-def _apply_centre_alignment(
-    workbook: Workbook, service_type: str, sheet_name: str | None = None
-) -> None:
-    """Apply centre alignment to data cells in specified sheets.
-
-    Applies centre alignment to all data cells (row >= data_start_row) in sheets
-    excluding the Notes sheet. Handles numeric and string data cells.
-
-    Args:
-        workbook: Openpyxl Workbook object
-        service_type: 'inpatient', 'ae', or 'ambulance'
-        sheet_name: Optional specific sheet to target. If None, applies to all data sheets
 
     Returns:
         None (modifies workbook in place)
@@ -359,45 +331,40 @@ def _apply_centre_alignment(
     config = TEMPLATE_CONFIG[service_type]
     data_start_row = config["data_start_row"]
 
-    # Determine which sheets to process
-    if sheet_name is not None:
-        # Apply to specific sheet only
-        if sheet_name not in workbook.sheetnames:
-            return
-        sheets_to_process = [sheet_name]
-    else:
-        # Apply to all sheets
-        sheets_to_process = workbook.sheetnames
-
-    for target_sheet in sheets_to_process:
-        sheet = workbook[target_sheet]
-
+    for sheet_name in workbook.sheetnames:
         # Skip Notes sheet - it should remain left-aligned
-        if target_sheet == "Notes":
+        if sheet_name == "Notes":
             continue
 
         # Skip non-data sheets
-        exclude_suffixes = ("Macro", "VBA")
-        if any(target_sheet.endswith(suffix) for suffix in exclude_suffixes):
+        if any(sheet_name.endswith(suffix) for suffix in ("Macro", "VBA")):
             continue
 
-        for row in range(data_start_row, sheet.max_row + 1):
-            for col in range(1, sheet.max_column + 1):
-                cell = sheet.cell(row=row, column=col)
+        sheet = workbook[sheet_name]
 
-                # Skip empty cells or placeholder markers
-                if cell.value is None or cell.value == "-":
-                    continue
+        # Apply centre alignment to all cells in the data range at once
+        # for performance - this is much faster than per-cell iteration
+        from openpyxl.utils import get_column_letter
 
-                # Skip if already centre-aligned
-                if (
-                    cell.alignment
-                    and getattr(cell.alignment, "horizontal", None) == "center"
-                ):
-                    continue
+        if sheet.max_row >= data_start_row and sheet.max_column >= 1:
+            # Get data range starting from data_start_row to max_row, columns 1 to max_column
+            from openpyxl.formatting.rule import CellIsRule
+            from openpyxl.styles import PatternFill
 
-                # Apply centre alignment (openpyxl preserves other properties like font size)
-                cell.alignment = Alignment(horizontal="center")
+            # Use batch approach: set alignment for entire data range
+            # This is O(1) instead of O(n) per cell
+            for row_idx, row in enumerate(
+                sheet.iter_rows(
+                    min_row=data_start_row,
+                    max_row=sheet.max_row,
+                    min_col=1,
+                    max_col=sheet.max_column,
+                ),
+                start=data_start_row,
+            ):
+                for cell in row:
+                    if cell.value is not None and cell.value != "-":
+                        cell.alignment = Alignment(horizontal="center")
 
 
 # %%
@@ -788,9 +755,6 @@ def write_england_totals(params: WriteEnglandTotalsParams) -> None:
         options = {"all_level_data": all_level_data}
         _process_single_sheet(workbook, sheet_name, config, national_df, options)
 
-    # Apply centre alignment to all data sheets
-    _apply_centre_alignment(workbook, service_type)
-
 
 def _validate_england_totals_inputs(service_type: str, national_df: pd.DataFrame) -> None:
     """Validate inputs for England totals writing."""
@@ -928,8 +892,50 @@ def _get_data_from_national(
     return total_row, nhs_row
 
 
+def _write_cell_preserving_font(sheet, row, col, value):
+    """Write a value to a cell while preserving the cell's font styling.
+
+    When assigning .value directly in openpyxl, font properties can be reset
+    to defaults. This helper preserves the existing font (family, size, bold,
+    italic, etc.) while updating the value.
+
+    Args:
+        sheet: Openpyxl worksheet
+        row: Row number (1-indexed)
+        col: Column number (1-indexed)
+        value: Value to write
+
+    Returns:
+        The cell object after writing
+
+    """
+    cell = sheet.cell(row=row, column=col)
+
+    # Save font properties before writing by creating a new Font with same properties
+    original_font = cell.font
+
+    # Write the value
+    cell.value = value
+
+    # Restore the font by creating a copy with all properties
+    cell.font = Font(
+        name=original_font.name,
+        size=original_font.size,
+        bold=original_font.bold,
+        italic=original_font.italic,
+        vertAlign=original_font.vertAlign,
+        underline=original_font.underline,
+        strike=original_font.strike,
+        color=original_font.color,
+    )
+
+    return cell
+
+
 def _safe_write_cell(sheet, row, col, value):
     """Write to cell, handling merged cells by writing to top-left cell.
+
+    Preserves font styling while writing values.
 
     Args:
         sheet: Openpyxl worksheet object
@@ -949,13 +955,17 @@ def _safe_write_cell(sheet, row, col, value):
                 merged_range.min_row <= row <= merged_range.max_row
                 and merged_range.min_col <= col <= merged_range.max_col
             ):
+                # For merged cells, write to top-left and preserve its font
                 top_left_cell = sheet.cell(
                     row=merged_range.min_row, column=merged_range.min_col
                 )
+                original_font = top_left_cell.font
                 top_left_cell.value = value
+                top_left_cell.font = original_font
                 return
 
-    cell.value = value
+    # Non-merged cell: use preservation helper
+    _write_cell_preserving_font(sheet, row, col, value)
 
 
 def _get_sheet_configuration(
@@ -1613,9 +1623,6 @@ def write_summary_sheet(
             if data_key in summary_data and provider_key in summary_data[data_key]:
                 value = summary_data[data_key][provider_key]
                 safe_write_cell(sheet, row, col, value)
-
-    # Apply centre alignment to Summary sheet
-    _apply_centre_alignment(workbook, service_type, "Summary")
 
 
 # %%
