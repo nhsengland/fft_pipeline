@@ -612,14 +612,14 @@ def clean_icb_name(name: str) -> str:
             "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD")
 
     Returns:
-        Cleaned name (e.g., "LANCASHIRE AND SOUTH CUMBRIA ICB")
+        Cleaned name (e.g., "NHS LANCASHIRE AND SOUTH CUMBRIA ICB")
 
     >>> clean_icb_name(
     ...     "NHS LANCASHIRE AND SOUTH CUMBRIA INTEGRATED CARE BOARD"
     ... )
-    'LANCASHIRE AND SOUTH CUMBRIA ICB'
+    'NHS LANCASHIRE AND SOUTH CUMBRIA ICB'
     >>> clean_icb_name("NHS SUSSEX INTEGRATED CARE BOARD")
-    'SUSSEX ICB'
+    'NHS SUSSEX ICB'
     >>> clean_icb_name("INDEPENDENT SECTOR PROVIDERS")
     'INDEPENDENT SECTOR PROVIDERS'
 
@@ -628,8 +628,7 @@ def clean_icb_name(name: str) -> str:
         return name
 
     result = name
-    if result.startswith("NHS "):
-        result = result[4:]  # Remove "NHS " prefix
+    # Replace "INTEGRATED CARE BOARD" with "ICB" while preserving NHS prefix
     result = result.replace("INTEGRATED CARE BOARD", "ICB")
 
     return result.strip()
@@ -667,6 +666,38 @@ def convert_fft_period_to_datetime(fft_period: str):
 
     month_num = month_map[month_abbrev]
     return pd.Timestamp(year_full, month_num, 1)
+
+
+def _initialize_response_data(provider_types: list[str]) -> tuple:
+    """Initialize response data dictionaries with 'NA' values.
+
+    Args:
+        provider_types: List of provider type keys
+
+    Returns:
+        Tuple of (orgs_submitting, responses_current, responses_previous,
+                  responses_to_date, pct_positive_current, pct_positive_previous,
+                  pct_negative_current, pct_negative_previous)
+
+    """
+    orgs_submitting = {key: "NA" for key in provider_types}
+    responses_current = {key: "NA" for key in provider_types}
+    responses_previous = {key: "NA" for key in provider_types}
+    responses_to_date = {key: "NA" for key in provider_types}
+    pct_positive_current = {key: "NA" for key in provider_types}
+    pct_positive_previous = {key: "NA" for key in provider_types}
+    pct_negative_current = {key: "NA" for key in provider_types}
+    pct_negative_previous = {key: "NA" for key in provider_types}
+    return (
+        orgs_submitting,
+        responses_current,
+        responses_previous,
+        responses_to_date,
+        pct_positive_current,
+        pct_positive_previous,
+        pct_negative_current,
+        pct_negative_previous,
+    )
 
 
 def extract_summary_data(
@@ -803,37 +834,49 @@ def extract_summary_data(
         """Build column name from prefix and suffix."""
         return f"{prefix}{suffix}"
 
+    def to_numeric(val):
+        """Convert '-' strings and NA values to 0 for calculations."""
+        if val in {"-", "NA"} or pd.isna(val):
+            return 0
+        return val
+
     def calc_percentage(likely_val, extremely_likely_val, responses_val):
         """Calculate percentage from likely + extremely likely / responses."""
+        likely_val = to_numeric(likely_val)
+        extremely_likely_val = to_numeric(extremely_likely_val)
+        responses_val = to_numeric(responses_val)
+
         if responses_val == 0:
             return 0
         return (likely_val + extremely_likely_val) / responses_val
 
-    # Get provider types for this service
-    # Initialize ALL values to "NA" first (matching VBA line 37)
     provider_types = list(summary_config["orgs_submitting"].keys())
-    orgs_submitting = {key: "NA" for key in provider_types}
-    responses_current = {key: "NA" for key in provider_types}
-    responses_previous = {key: "NA" for key in provider_types}
-    responses_to_date = {key: "NA" for key in provider_types}
-    pct_positive_current = {key: "NA" for key in provider_types}
-    pct_positive_previous = {key: "NA" for key in provider_types}
-    pct_negative_current = {key: "NA" for key in provider_types}
-    pct_negative_previous = {key: "NA" for key in provider_types}
+    (
+        orgs_submitting,
+        responses_current,
+        responses_previous,
+        responses_to_date,
+        pct_positive_current,
+        pct_positive_previous,
+        pct_negative_current,
+        pct_negative_previous,
+    ) = _initialize_response_data(provider_types)
 
     # Selectively overwrite only values that VBA sets
     orgs_cols = summary_config["orgs_submitting"]
     for key, suffix in orgs_cols.items():
         # VBA only sets B3 (total) and B5 (wics), not B4 (acute)
         if not (service_type == "ae" and key == "acute"):
-            orgs_submitting[key] = current_row[get_col(suffix)]
+            orgs_submitting[key] = to_numeric(current_row[get_col(suffix)])
 
     # VBA sets all responses values
     resp_cols = summary_config["responses"]
     for key, suffix in resp_cols.items():
-        responses_current[key] = current_row[get_col(suffix)]
-        responses_previous[key] = previous_row[get_col(suffix)]
-        responses_to_date[key] = time_series_df.loc[current_idx:, get_col(suffix)].sum()
+        responses_current[key] = to_numeric(current_row[get_col(suffix)])
+        responses_previous[key] = to_numeric(previous_row[get_col(suffix)])
+        # For sum, convert each value before summing
+        col_data = time_series_df.loc[current_idx:, get_col(suffix)].apply(to_numeric)
+        responses_to_date[key] = col_data.sum()
 
     # VBA sets percentages only if responses > 0
     calc_context = {

@@ -47,10 +47,11 @@ ALL_MODES = [
     "Mode Other",
 ]
 _AE_EXCLUDED_MODES = {"Mode Electronic Home"}
+_AMBULANCE_EXCLUDED_MODES = {"Mode Electronic Home"}
 MODE_COLS = {
     "inpatient": ALL_MODES,
     "ae": [m for m in ALL_MODES if m not in _AE_EXCLUDED_MODES],
-    "ambulance": ALL_MODES,
+    "ambulance": [m for m in ALL_MODES if m not in _AMBULANCE_EXCLUDED_MODES],
 }
 COMMON_MODES = [m for m in ALL_MODES if all(m in modes for modes in MODE_COLS.values())]
 SERVICE_SPECIFIC_MODES = {
@@ -80,6 +81,13 @@ _BASE_ID = {
     "Org code": "Trust_Code",
     "Org name": "Trust_Name",
 }
+_AMB_ORG_ID = {
+    "Parent org code": "ICB_Code",
+    "Parent name": "ICB_Name",
+    "Org code": "Trust_Code",
+    "Org name": "Trust_Name",  # Standard mapping
+    "Organisation Name": "Trust_Name",  # Map ambulance template's "Organisation Name"
+}
 _IP_DATA = {
     "1 Very Good SUM": "Very Good",
     "2 Good SUM": "Good",
@@ -100,6 +108,17 @@ _AE_DATA = {
     "Total Eligible": "Total Eligible",
     "Prop_Pos": "Percentage_Positive",
 }
+_AMB_DATA = {
+    "1 Very Good": "Very Good",
+    "2 Good": "Good",
+    "3 Neither good nor poor": "Neither Good nor Poor",  # Match raw data case
+    "4 Poor": "Poor",
+    "5 Very poor": "Very Poor",  # Match raw data case
+    "6 Dont Know": "Don't Know",  # Match raw data (no apostrophe in source)
+    "Total Responses": "Total Responses",
+    "Total Eligible": "Total Eligible",
+    # Percentage columns don't exist in raw data - they're calculated automatically
+}
 _SITE_ID = {"Site Code": "Site_Code", "Site Name MAX": "Site_Name"}
 _WARD_ID = {
     "Site code": "Site_Code",
@@ -119,12 +138,16 @@ COLUMN_MAPS = {
         "site": {**_BASE_ID, **_SITE_ID, **_AE_DATA},
         "organisation": {**_BASE_ID, **_AE_DATA},
     },
+    "ambulance": {
+        "organisation": {**_AMB_ORG_ID, **_AMB_DATA},
+    },
 }
 
 _COLS_TO_REMOVE = ["Yearnumber", "Periodname", "Title", "Response Rate"]
 COLUMNS_TO_REMOVE = {
     "inpatient": {level: _COLS_TO_REMOVE for level in ("organisation", "site", "ward")},
     "ae": {level: _COLS_TO_REMOVE for level in ("organisation", "site")},
+    "ambulance": {"organisation": _COLS_TO_REMOVE},
 }
 
 _OUT_ICB = ["ICB_Code", "ICB_Name"]
@@ -132,6 +155,14 @@ _OUT_TRUST = ["ICB_Code", "Trust_Code", "Trust_Name"]
 _OUT_SITE = _OUT_TRUST + ["Site_Code", "Site_Name"]
 _OUT_WARD = _OUT_SITE + ["Ward_Name"]
 _OUT_DATA = TOTALS_COLS + _STD_PCT_COLS + LIKERT_COLS
+_AMB_OUT_DATA = (
+    TOTALS_COLS + _STD_PCT_COLS + LIKERT_COLS
+)  # Ambulance has same order as other services
+_AMB_OUT_ORG = [
+    "ICB_Code",
+    "Trust_Code",
+    "Trust_Name",
+]  # Ambulance org columns: ICB Code, Org Code, Organisation Name
 
 OUTPUT_COLUMNS = {
     "inpatient": {
@@ -144,6 +175,11 @@ OUTPUT_COLUMNS = {
         "ICB": _OUT_ICB + _OUT_DATA,
         "Trusts": _OUT_TRUST + _OUT_DATA + MODE_COLS["ae"],
         "Sites": _OUT_SITE + _OUT_DATA,
+    },
+    "ambulance": {
+        "PTS ICB": _OUT_ICB + _AMB_OUT_DATA,
+        "PTS Org": _AMB_OUT_ORG + _AMB_OUT_DATA,
+        "Mode Org": _AMB_OUT_ORG + ["Total Responses"] + MODE_COLS["ambulance"],
     },
 }
 
@@ -164,6 +200,7 @@ MONTH_ABBREV = {
 
 SUPPRESSION_THRESHOLD = 5
 SUPPRESSION_MARKER = "*"
+SECOND_RANK = 2
 VALIDATION_TOLERANCE = 1e-4
 IS1_CODE = "IS1"
 IS1_NAME = "INDEPENDENT SECTOR PROVIDERS"
@@ -293,6 +330,46 @@ TEMPLATE_CONFIG: dict[str, TemplateServiceConfig] = {
             },
         },
     },
+    "ambulance": {
+        "template_file": "FFT_Amb_template.xlsm",
+        "output_prefix": "FFT-ambulance-data",
+        "data_start_row": 13,
+        "england_rows": {"including_is": 10, "excluding_is": 11, "selection": 12},
+        "sheets": {
+            "icb": {
+                "sheet_name": "PTS ICB",
+                "name_column": "ICB_Name",
+                "england_label_column": "ICB_Name",
+                "columns": [*ICB_COLS, *TOTALS_COLS, *_STD_PCT_COLS, *LIKERT_COLS],
+            },
+            "organisation": {
+                "sheet_name": "PTS Org",
+                "name_column": "Trust_Name",
+                "england_label_column": "Trust_Name",
+                "columns": [
+                    "ICB Code",
+                    # Only ICB Code, no ICB Name in ambulance PTS Org template
+                    *TRUST_COLS,
+                    *TOTALS_COLS,
+                    *_STD_PCT_COLS,
+                    *LIKERT_COLS,
+                    *MODE_COLS["ambulance"],
+                ],
+            },
+            "mode_org": {
+                "sheet_name": "Mode Org",
+                "name_column": "Trust_Name",
+                "england_label_column": "Trust_Name",
+                "columns": [
+                    "ICB Code",
+                    # Only ICB Code, no ICB Name in ambulance Mode Org template
+                    *TRUST_COLS,
+                    "Total Responses",
+                    *MODE_COLS["ambulance"],
+                ],
+            },
+        },
+    },
 }
 
 
@@ -371,6 +448,27 @@ BS_SHEET_CONFIG: dict[str, BSSheetServiceConfig] = {
             },
         },
     },
+    "ambulance": {
+        "reference_list_start_col": 21,
+        "reference_list_start_row": 2,
+        "reference_columns": [
+            "ICB_Code",
+            "Trust_Code",
+            "Trust_Name",
+        ],
+        "region_reference": {
+            "start_col": 11,  # Column K (based on BS sheet analysis)
+            "start_row": 2,
+            "pairs": [["ICB_Code", "ICB_Name"]],
+        },
+        "linked_lists": {
+            "regions": {
+                "start_col": 14,  # Column N
+                "pairs": [["ICB_Code", "ICB_Name"]],
+            },
+            "organisations": {"start_col": 31, "pairs": [["Trust_Code", "Trust_Name"]]},
+        },
+    },
 }
 
 
@@ -402,6 +500,7 @@ _pct_base = {"ICB": [5, 6], "Trusts": [6, 7], "Sites": [8, 9]}
 PERCENTAGE_COLUMN_CONFIG: dict[str, dict[str, list[int]]] = {
     "inpatient": {**_pct_base, "Wards": [9, 10]},
     "ae": _pct_base,
+    "ambulance": {"PTS ICB": [5, 6], "PTS Org": [6, 7]},
 }
 
 # Percentage formatting configuration
@@ -506,14 +605,50 @@ SUMMARY_COLUMNS = {
             "wics_extremely_unlikely": " WiCs & MIUs Extremely Unlikely",
         },
     },
+    "ambulance": {
+        "orgs_submitting": {
+            "total": " PTS Submitted",
+            "nhs": " PTS NHS Submitted",
+            "is": " PTS IS Submitted",
+        },
+        "responses": {
+            "total": " PTS Responses",
+            "nhs": " PTS NHS Responses",
+            "is": " PTS IS Responses",
+        },
+        "positive": {
+            "likely": " PTS Likely",
+            "extremely_likely": " PTS Extremely Likely",
+            "nhs_likely": " PTS NHS Likely",
+            "nhs_extremely_likely": " PTS NHS Extremely Likely",
+            "is_likely": " PTS IS Likely",
+            "is_extremely_likely": " PTS IS Extremely Likely",
+        },
+        "negative": {
+            "unlikely": " PTS Unlikely",
+            "extremely_unlikely": " PTS Extremely Unlikely",
+            "nhs_unlikely": " PTS NHS Unlikely",
+            "nhs_extremely_unlikely": " PTS NHS Extremely Unlikely",
+            "is_unlikely": " PTS IS Unlikely",
+            "is_extremely_unlikely": " PTS IS Extremely Unlikely",
+        },
+    },
 }
 
-ENGLAND_ROWS_SKIP_COLUMNS = {"ICB": 2, "Trusts": 3, "Sites": 5, "Wards": 6}
+ENGLAND_ROWS_SKIP_COLUMNS = {
+    "ICB": 2,
+    "Trusts": 3,
+    "Sites": 5,
+    "Wards": 6,
+    "PTS ICB": 2,
+    "PTS Org": 3,
+    "Mode Org": 3,
+}
 
 HEADER_ROW_RANGES_BY_SERVICE = {
     "inpatient": {s: [10, 14] for s in ("ICB", "Trusts", "Sites", "Wards")},
     "ae": {s: [3, 6] for s in ("ICB", "Trusts", "Sites")},
-    "ambulance": {s: [1, 4] for s in ("ICB", "Trusts")},
+    "ambulance": {s: [1, 4] for s in ("PTS ICB", "PTS Org", "Mode Org")},
 }
 
 HEADER_ROWS_BY_SERVICE = {"inpatient": 11, "ae": 4, "ambulance": 3}
@@ -521,6 +656,7 @@ HEADER_ROWS_BY_SERVICE = {"inpatient": 11, "ae": 4, "ambulance": 3}
 VALIDATION_CONFIG: dict[str, list[str]] = {
     "inpatient": ["ICB", "Trusts", "Sites", "Wards", "Summary"],
     "ae": ["ICB", "Trusts", "Sites", "Summary"],
+    "ambulance": ["PTS ICB", "PTS Org", "Mode Org", "Summary"],
 }
 
 VALIDATION_KEY_COLUMNS: dict[str, str | list[str]] = {
@@ -528,6 +664,9 @@ VALIDATION_KEY_COLUMNS: dict[str, str | list[str]] = {
     "Trusts": "B",
     "Sites": "D",
     "Wards": ["B", "D", "F"],
+    "PTS ICB": "A",  # Use ICB Code (column A) instead of ICB Name (column B)
+    "PTS Org": "B",
+    "Mode Org": "B",
 }
 
 ENGLAND_TOTALS_DATA_SOURCE: dict[str, str] = {
@@ -535,6 +674,9 @@ ENGLAND_TOTALS_DATA_SOURCE: dict[str, str] = {
     "Sites": "site",
     "Trusts": "organisation",
     "ICB": "organisation",
+    "PTS ICB": "organisation",
+    "PTS Org": "organisation",
+    "Mode Org": "organisation",
 }
 
 STANDARD_ENGLAND_DATA_COLUMNS = TOTALS_COLS + _STD_PCT_COLS + LIKERT_COLS
@@ -550,6 +692,11 @@ ENGLAND_ROWS_DATA_COLUMNS: dict[str, dict[str, list[str]]] = {
         "ICB": STANDARD_ENGLAND_DATA_COLUMNS,
         "Trusts": STANDARD_ENGLAND_DATA_COLUMNS + MODE_COLS["ae"],
         "Sites": STANDARD_ENGLAND_DATA_COLUMNS,
+    },
+    "ambulance": {
+        "PTS ICB": STANDARD_ENGLAND_DATA_COLUMNS,
+        "PTS Org": STANDARD_ENGLAND_DATA_COLUMNS,
+        "Mode Org": MODE_COLS["ambulance"],
     },
 }
 
@@ -582,6 +729,20 @@ SUMMARY_SHEET_CONFIG = {
             "pct_negative_previous": 10,  # J
         },
         "period_row": 4,
+    },
+    "ambulance": {
+        "rows": {"total": 8, "nhs": 9, "is": 10},
+        "cols": {
+            "orgs_submitting": 4,  # D
+            "responses_to_date": 5,  # E
+            "responses_current": 6,  # F
+            "responses_previous": 7,  # G
+            "pct_positive_current": 8,  # H
+            "pct_positive_previous": 9,  # I
+            "pct_negative_current": 10,  # J
+            "pct_negative_previous": 11,  # K
+        },
+        "period_row": 7,
     },
 }
 

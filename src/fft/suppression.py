@@ -1,11 +1,23 @@
 """Suppression logic for FFT data privacy protection."""
 
+from typing import TypedDict
+
 import pandas as pd
 
 from fft.config import AGGREGATION_COLUMNS, MODE_COLS, SUPPRESSION_THRESHOLD
 
 # Constants for suppression logic
 SECOND_RANK = 2  # Used to identify the second-ranked item in suppression logic
+
+
+class ApplyCascadeSuppressionParams(TypedDict):
+    """Parameters for apply_cascade_suppression function."""
+
+    parent_df: pd.DataFrame
+    child_df: pd.DataFrame
+    parent_code_col: str
+    child_code_col: str
+    parent_suppression_col: str
 
 
 # %%
@@ -139,16 +151,8 @@ def _get_ward_sorted_indices(df: pd.DataFrame) -> pd.Index:
     df_temp = df.copy()
 
     # Use specialty text directly for sorting (VBA sorts alphabetically)
-    df_temp["_spec1_text"] = (
-        (df_temp["First Speciality"] if "First Speciality" in df_temp.columns else "")
-        .astype(str)
-        .fillna("")
-    )
-    df_temp["_spec2_text"] = (
-        (df_temp["Second Speciality"] if "Second Speciality" in df_temp.columns else "")
-        .astype(str)
-        .fillna("")
-    )
+    df_temp["_spec1_text"] = df_temp.get("First Speciality", "").astype(str).fillna("")
+    df_temp["_spec2_text"] = df_temp.get("Second Speciality", "").astype(str).fillna("")
 
     # Sort to match VBA tie-breaking: Total Responses → First
     # Specialty → Second Specialty → Ward_Name
@@ -281,11 +285,7 @@ def apply_second_level_suppression(
 
 # %%
 def apply_cascade_suppression(
-    parent_df: pd.DataFrame,
-    child_df: pd.DataFrame,
-    parent_code_col: str,
-    child_code_col: str,
-    parent_suppression_col: str,
+    params: ApplyCascadeSuppressionParams,
 ) -> pd.DataFrame:
     """Apply cascade suppression from parent to child level.
 
@@ -319,6 +319,8 @@ def apply_cascade_suppression(
     of any suppressed parent organisation.
 
     Args:
+        params: Parameters dictionary containing parent_df, child_df, parent_code_col,
+            child_code_col, and parent_suppression_col
         parent_df: Parent level DataFrame with suppression flags
         child_df: Child level DataFrame with 'Rank' column
         parent_code_col: Column name for parent code (e.g., 'ICB_Code')
@@ -398,6 +400,12 @@ def apply_cascade_suppression(
     [1]
 
     """
+    parent_df = params["parent_df"]
+    child_df = params["child_df"]
+    parent_code_col = params["parent_code_col"]
+    child_code_col = params["child_code_col"]
+    parent_suppression_col = params["parent_suppression_col"]
+
     # Validate columns
     if parent_code_col not in parent_df.columns:
         raise KeyError(f"Column '{parent_code_col}' not found in parent DataFrame")
