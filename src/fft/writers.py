@@ -231,10 +231,10 @@ def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
 
     for row_idx, row in enumerate(params["df"].itertuples(index=False), start=start_row):
         for col_idx, cell_value in enumerate(row, start=start_col):
-            # Convert NaN values to "NA" string (matching VBA pre-fill behavior)
+            # Convert NaN values to "NA" string (matching VBA pre-fill behaviour)
             if isinstance(cell_value, float) and pd.isna(cell_value):
-                cell_val = "NA"
-            _safe_write_cell(sheet, row_idx, col_idx, cell_val)
+                cell_value = "NA"
+            _safe_write_cell(sheet, row_idx, col_idx, cell_value)
             written_cells.append((row_idx, col_idx))
 
             cell = sheet.cell(row=row_idx, column=col_idx)
