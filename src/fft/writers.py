@@ -1,12 +1,18 @@
 """Excel output functions."""
 
 import logging
+import numbers
 from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict
 
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Font
+
+if TYPE_CHECKING:
+    from openpyxl.workbook import Workbook
 from openpyxl.workbook import Workbook
+from openpyxl.worksheet.merge import MergedCell
 
 from fft.config import (
     BS_SHEET_CONFIG,
@@ -28,6 +34,47 @@ from fft.loaders import load_collections_overview
 from fft.processors import extract_summary_data
 
 logger = logging.getLogger(__name__)
+
+
+class WriteDataFrameToSheetParams(TypedDict):
+    """Parameters for write_dataframe_to_sheet function."""
+
+    workbook: Workbook
+    df: pd.DataFrame
+    sheet_name: str
+    start_row: int
+    start_col: int
+    service_type: str | None
+
+
+class WriteEnglandTotalsParams(TypedDict):
+    """Parameters for write_england_totals function."""
+
+    workbook: Workbook
+    service_type: str
+    national_df: pd.DataFrame
+    org_counts: dict
+    data_options: dict | None
+
+
+class ProcessSingleSheetParams(TypedDict):
+    """Parameters for _process_single_sheet function."""
+
+    workbook: Workbook
+    sheet_name: str
+    config: dict
+    national_df: pd.DataFrame
+    options: dict | None
+
+
+class WriteSummarySheetParams(TypedDict):
+    """Parameters for write_summary_sheet function."""
+
+    workbook: Workbook
+    summary_data: dict
+    current_period: str
+    previous_period: str
+    service_type: str
 
 
 def load_template(service_type: str) -> Workbook:
@@ -94,23 +141,16 @@ def _has_formula(cell) -> bool:
     return isinstance(cell.value, str) and cell.value.startswith("=")
 
 
-def write_dataframe_to_sheet(
-    workbook: Workbook,
-    df: pd.DataFrame,
-    sheet_name: str,
-    start_row: int,
-    start_col: int = 1,
-) -> None:
+def write_dataframe_to_sheet(params: WriteDataFrameToSheetParams) -> None:
     """Write DataFrame contents to a specific sheet location.
 
     Writes data without headers - assumes template already has headers in place.
+    Sets proper Excel data types: numbers, percentages, and general text.
+    Ensures font homogeneity across all data rows by applying the first data
+    row's font to all written cells.
 
     Args:
-        workbook: Openpyxl Workbook object
-        df: DataFrame to write
-        sheet_name: Name of target sheet
-        start_row: Row number to start writing (1-indexed)
-        start_col: Column number to start writing (1-indexed, default 1)
+        params: WriteDataFrameToSheetParams with all required parameters
 
     Returns:
         None (modifies workbook in place)
@@ -118,7 +158,8 @@ def write_dataframe_to_sheet(
     Raises:
         KeyError: If sheet_name doesn't exist in workbook
 
-    >>> from src.fft.writers import load_template, write_dataframe_to_sheet
+    >>> from src.fft.writers import load_template, write_dataframe_to_sheet,
+    ... WriteDataFrameToSheetParams
     >>> import pandas as pd
     >>> wb = load_template('inpatient')
     >>> df = pd.DataFrame({
@@ -126,40 +167,282 @@ def write_dataframe_to_sheet(
     ...     'ICB_Name': ['Test ICB 1', 'Test ICB 2'],
     ...     'Total Responses': [100, 200]
     ... })
-    >>> write_dataframe_to_sheet(wb, df, 'ICB', start_row=15, start_col=1)
+    >>> params: WriteDataFrameToSheetParams = {
+    ...     'workbook': wb,
+    ...     'df': df,
+    ...     'sheet_name': 'ICB',
+    ...     'start_row': 15,
+    ...     'start_col': 1,
+    ...     'service_type': 'inpatient'
+    ... }
+    >>> write_dataframe_to_sheet(params)
     >>> wb['ICB'].cell(row=15, column=1).value
     'ABC'
     >>> wb['ICB'].cell(row=16, column=2).value
     'Test ICB 2'
 
     # Edge case: Sheet doesn't exist
-    >>> write_dataframe_to_sheet(wb, df, 'NonExistent', start_row=15)
+    >>> params_edge: WriteDataFrameToSheetParams = {
+    ...     'workbook': wb,
+    ...     'df': df,
+    ...     'sheet_name': 'NonExistent',
+    ...     'start_row': 15,
+    ...     'start_col': 1,
+    ...     'service_type': 'inpatient'
+    ... }
+    >>> write_dataframe_to_sheet(params_edge)
     Traceback (most recent call last):
         ...
     KeyError: "Sheet 'NonExistent' not found in workbook"
 
     # Edge case: Empty DataFrame
     >>> df_empty = pd.DataFrame(columns=['A', 'B'])
-    >>> write_dataframe_to_sheet(wb, df_empty, 'ICB', start_row=20)
+    >>> params_empty: WriteDataFrameToSheetParams = {
+    ...     'workbook': wb,
+    ...     'df': df_empty,
+    ...     'sheet_name': 'ICB',
+    ...     'start_row': 20,
+    ...     'start_col': 1,
+    ...     'service_type': 'inpatient'
+    ... }
+    >>> write_dataframe_to_sheet(params_empty)
     >>> wb['ICB'].cell(row=20, column=1).value is None
     True
 
     """
+    workbook = params["workbook"]
+    sheet_name = params["sheet_name"]
+    start_row = params["start_row"]
+    start_col = params["start_col"]
+    service_type = params["service_type"]
     if sheet_name not in workbook.sheetnames:
         raise KeyError(f"Sheet '{sheet_name}' not found in workbook")
 
     sheet = workbook[sheet_name]
 
-    for row_idx, row in enumerate(df.itertuples(index=False), start=start_row):
+    # Get percentage columns for this sheet if service_type provided
+    percentage_columns = set()
+    if service_type and service_type in PERCENTAGE_COLUMN_CONFIG:
+        if sheet_name in PERCENTAGE_COLUMN_CONFIG[service_type]:
+            percentage_columns = set(PERCENTAGE_COLUMN_CONFIG[service_type][sheet_name])
+
+    # Track written cells for font homogenization
+    written_cells = []
+
+    for row_idx, row in enumerate(params["df"].itertuples(index=False), start=start_row):
         for col_idx, cell_value in enumerate(row, start=start_col):
-            # Convert NaN values to dashes to match VBA behaviour
-            display_value = "-" if pd.isna(cell_value) else cell_value
-            sheet.cell(row=row_idx, column=col_idx).value = display_value
+            # Convert NaN values to "NA" string (matching VBA pre-fill behaviour)
+            if isinstance(cell_value, float) and pd.isna(cell_value):
+                cell_value = "NA"
+            _safe_write_cell(sheet, row_idx, col_idx, cell_value)
+            written_cells.append((row_idx, col_idx))
+
+            cell = sheet.cell(row=row_idx, column=col_idx)
+            if cell.value is None or cell.value == "-":
+                continue
+
+            # Set appropriate number format based on column type
+            # Numbers in percentage columns get percentage format,
+            # all else preserves template formatting
+            if isinstance(cell_value, numbers.Number) and col_idx in percentage_columns:
+                cell.number_format = PERCENTAGE_NUMBER_FORMAT
+
+    # Apply font homogenization: use first data row's font FOR EACH COLUMN
+    # This preserves column-specific fonts from the template
+    # (e.g., ICB Code vs Org Name columns)
+    if written_cells:
+        # Group cells by column
+        cells_by_col = {}
+        for row_idx, col_idx in written_cells:
+            if col_idx not in cells_by_col:
+                cells_by_col[col_idx] = []
+            cells_by_col[col_idx].append(row_idx)
+
+        # Get the font from the first row per column and apply to all rows in that column
+        for col_idx, row_indices in cells_by_col.items():
+            reference_row = row_indices[0]
+            reference_font = sheet.cell(row=reference_row, column=col_idx).font
+
+            for row_idx in row_indices:
+                cell = sheet.cell(row=row_idx, column=col_idx)
+                if cell.value is not None:
+                    cell.font = Font(
+                        name=reference_font.name,
+                        size=reference_font.size,
+                        bold=reference_font.bold,
+                        italic=reference_font.italic,
+                        vertAlign=reference_font.vertAlign,
+                        underline=reference_font.underline,
+                        strike=reference_font.strike,
+                        color=reference_font.color,
+                    )
 
 
+def add_terminating_row(
+    workbook: Workbook,
+    sheet_name: str,
+    terminating_row: int,
+    num_columns: int,
+) -> None:
+    """Add a non-table row after data and trim sheet to prevent scrolling to row 999.
+
+    Args:
+        workbook: Openpyxl Workbook object
+        sheet_name: Name of target sheet
+        terminating_row: Row number to add terminating row (1-indexed)
+        num_columns: Number of columns to fill with dashes
+
+    """
+    if sheet_name not in workbook.sheetnames:
+        return
+
+    sheet = workbook[sheet_name]
+
+    # Add dashes to all data columns in the terminating row
+    for col_idx in range(1, num_columns + 1):
+        sheet.cell(row=terminating_row, column=col_idx).value = "-"
+
+    # Delete excess rows and columns to prevent infinite scrolling
+    if sheet.max_row > terminating_row:
+        sheet.delete_rows(terminating_row + 1, sheet.max_row - terminating_row)
+    if sheet.max_column > num_columns:
+        sheet.delete_cols(num_columns + 1, sheet.max_column - num_columns)
+
+
+def apply_alignment_to_workbook(workbook: Workbook, service_type: str) -> None:
+    """Apply centre alignment to all data cells in a single pass.
+
+    Processes all sheets in one traversal, excluding Notes and Macro/VBA sheets.
+    Applied as final step after all data writing is complete.
+
+    Args:
+        workbook: Openpyxl Workbook object
+        service_type: 'inpatient', 'ae', or 'ambulance'
+
+    Returns:
+        None (modifies workbook in place)
+
+    """
+    if service_type not in TEMPLATE_CONFIG:
+        return
+
+    config = TEMPLATE_CONFIG[service_type]
+    data_start_row = config["data_start_row"]
+
+    for sheet_name in workbook.sheetnames:
+        # Skip Notes sheet - it should remain left-aligned
+        if sheet_name == "Notes":
+            continue
+
+        # Skip non-data sheets
+        if any(sheet_name.endswith(suffix) for suffix in ("Macro", "VBA")):
+            continue
+
+        sheet = workbook[sheet_name]
+
+        # Apply centre alignment to all cells in the data range at once
+        # for performance - this is much faster than per-cell iteration
+        if sheet.max_row >= data_start_row and sheet.max_column >= 1:
+            # Use batch approach: set alignment for entire data range
+            # This is O(1) instead of O(n) per cell
+            for row_idx, row in enumerate(
+                sheet.iter_rows(
+                    min_row=data_start_row,
+                    max_row=sheet.max_row,
+                    min_col=1,
+                    max_col=sheet.max_column,
+                ),
+                start=data_start_row,
+            ):
+                for cell in row:
+                    if cell.value is not None and cell.value != "-":
+                        cell.alignment = Alignment(horizontal="center")
 
 
 # %%
+def _sort_pair_if_needed(pair: tuple[str, ...], data: pd.DataFrame) -> pd.DataFrame:
+    """Sort a pair of columns together to maintain relationship.
+
+    Args:
+        pair: Tuple of column names to sort together
+        data: DataFrame with the pair columns
+
+    Returns:
+        DataFrame with pair columns sorted by first column
+
+    """
+    unique_pair = data[list(pair)].drop_duplicates()
+
+    if len(pair) > 1:
+        sorted_pair = (
+            unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+        )
+    else:
+        sorted_pair = (
+            unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
+        )
+
+    return sorted_pair
+
+
+def _write_region_reference(
+    sheet,
+    region_config: dict,
+    region_start_col: int,
+    region_start_row: int,
+    ward_df: pd.DataFrame,
+) -> int:
+    """Write region reference data to worksheet, returning column offset.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        region_config: Region reference configuration dict
+        region_start_col: Starting column for region reference
+        region_start_row: Starting row for region reference
+        ward_df: DataFrame with ward data
+
+    Returns:
+        Updated column offset after writing
+
+    """
+    region_pairs = region_config["pairs"]
+    col_offset = 0
+    for pair in region_pairs:
+        sorted_pair = _sort_pair_if_needed(pair, ward_df)
+        for pair_col_idx, col_name in enumerate(pair):
+            sorted_values = sorted_pair[col_name]
+            for row_idx, value in enumerate(sorted_values, start=region_start_row):
+                sheet.cell(
+                    row=row_idx, column=region_start_col + col_offset + pair_col_idx
+                ).value = value
+        col_offset += len(pair)
+    return col_offset
+
+
+def _write_linked_lists(sheet, linked_lists_config: dict, ward_df: pd.DataFrame) -> None:
+    """Write linked lists data to worksheet.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        linked_lists_config: Linked lists configuration dict
+        ward_df: DataFrame with ward data
+
+    """
+    for level, level_config in linked_lists_config.items():
+        start_col = level_config["start_col"]
+        pairs = level_config["pairs"]
+        col_offset = 0
+        for pair in pairs:
+            sorted_pair = _sort_pair_if_needed(pair, ward_df)
+            for pair_col_idx, col_name in enumerate(pair):
+                sorted_values = sorted_pair[col_name]
+                for row_idx, value in enumerate(sorted_values, start=2):
+                    sheet.cell(
+                        row=row_idx, column=start_col + col_offset + pair_col_idx
+                    ).value = value
+            col_offset += len(pair)
+
+
 def write_bs_lookup_data(
     workbook: Workbook, ward_df: pd.DataFrame, service_type: str
 ) -> None:
@@ -269,59 +552,12 @@ def write_bs_lookup_data(
         region_config = config["region_reference"]
         region_start_col = region_config["start_col"]
         region_start_row = region_config["start_row"]
-        region_pairs = region_config["pairs"]
-
-        # For A&E, treat ICBs as regions by using ICB data for region reference
-        col_offset = 0
-        for pair in region_pairs:
-            # Use unique ICB pairs from the data
-            unique_pair = ward_df[pair].drop_duplicates()
-
-            # Sort pairs together to maintain code-to-name relationship
-            if len(pair) > 1:
-                # Sort by first column (typically the code) to maintain pairing
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-            else:
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-
-            # Write each column from the sorted pairs
-            for pair_col_idx, col_name in enumerate(pair):
-                sorted_values = sorted_pair[col_name]
-
-                for row_idx, value in enumerate(sorted_values, start=region_start_row):
-                    sheet.cell(
-                        row=row_idx, column=region_start_col + col_offset + pair_col_idx
-                    ).value = value
-
-            col_offset += len(pair)
+        _write_region_reference(
+            sheet, region_config, region_start_col, region_start_row, ward_df
+        )
 
     # 3. Write Linked Lists (dedupe pairs, sort pairs together maintaining relationships)
-    for level, level_config in config["linked_lists"].items():
-        start_col = level_config["start_col"]
-        pairs = level_config["pairs"]
-
-        col_offset = 0
-        for pair in pairs:
-            # Deduplicate the pair together
-            unique_pair = ward_df[pair].drop_duplicates()
-
-            # Sort pairs together to maintain relationships (e.g., code-to-name pairing)
-            if len(pair) > 1:
-                # Sort by first column (typically the code) to maintain pairing
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-            else:
-                sorted_pair = unique_pair.astype(str).sort_values(by=pair[0]).reset_index(drop=True)
-
-            # Write each column from the sorted pairs
-            for pair_col_idx, col_name in enumerate(pair):
-                sorted_values = sorted_pair[col_name]
-
-                for row_idx, value in enumerate(sorted_values, start=2):
-                    sheet.cell(
-                        row=row_idx, column=start_col + col_offset + pair_col_idx
-                    ).value = value
-
-            col_offset += len(pair)
+    _write_linked_lists(sheet, config["linked_lists"], ward_df)
 
 
 # %%
@@ -393,7 +629,21 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
             raise KeyError(f"Sheet '{sheet_name}' not found in workbook")
 
         sheet = workbook[sheet_name]
-        sheet[cell].value = template.format(period=fft_period)
+
+        cell_obj = sheet[cell]
+        if isinstance(cell_obj, MergedCell):
+            for merged_range in sheet.merged_cells.ranges:
+                if (
+                    merged_range.min_row <= cell_obj.row <= merged_range.max_row
+                    and merged_range.min_col <= cell_obj.col <= merged_range.max_col
+                ):
+                    top_left_cell = sheet.cell(
+                        row=merged_range.min_row, column=merged_range.min_col
+                    )
+                    top_left_cell.value = template.format(period=fft_period)
+                    break
+        else:
+            sheet[cell].value = template.format(period=fft_period)
 
         # FIXME: This is a temporary fix
         # Fix A&E Notes sheet rows 39-40 alignment
@@ -405,13 +655,7 @@ def update_period_labels(workbook: Workbook, service_type: str, fft_period: str)
 
 
 # %%
-def write_england_totals(
-    workbook: Workbook,
-    service_type: str,
-    national_df: pd.DataFrame,
-    org_counts: dict,
-    data_options: dict = None,
-) -> None:
+def write_england_totals(params: WriteEnglandTotalsParams) -> None:
     """Write England-level totals to rows 12-14 of output sheets.
 
     Writes three rows:
@@ -420,11 +664,7 @@ def write_england_totals(
     - Row 14: Selection (excluding suppressed data) - placeholder
 
     Args:
-        workbook: Openpyxl Workbook object
-        service_type: 'inpatient', 'ae', or 'ambulance'
-        national_df: DataFrame from aggregate_to_national() with Total/NHS/IS1 rows
-        org_counts: Dict with 'total_count', 'nhs_count', 'is1_count'
-        data_options: Optional dict with 'suppressed_data' and 'all_level_data' keys
+        params: WriteEnglandTotalsParams with all required parameters
 
     Returns:
         None (modifies workbook in place)
@@ -432,7 +672,8 @@ def write_england_totals(
     Raises:
         KeyError: If service_type not configured or required data missing
 
-    >>> from src.fft.writers import load_template, write_england_totals
+    >>> from src.fft.writers import load_template, write_england_totals,
+    ... WriteEnglandTotalsParams
     >>> import pandas as pd
     >>> wb = load_template('inpatient')
     >>> nat_df = pd.DataFrame({
@@ -449,7 +690,14 @@ def write_england_totals(
     ...     "Don't Know": [0, 0]
     ... })
     >>> counts = {'total_count': 150, 'nhs_count': 130, 'is1_count': 20}
-    >>> write_england_totals(wb, 'inpatient', nat_df, counts)
+    >>> params: WriteEnglandTotalsParams = {
+    ...     'workbook': wb,
+    ...     'service_type': 'inpatient',
+    ...     'national_df': nat_df,
+    ...     'org_counts': counts,
+    ...     'data_options': None
+    ... }
+    >>> write_england_totals(params)
     >>> wb['ICB'].cell(row=12, column=3).value
     np.int64(1000)
     >>> wb['ICB'].cell(row=12, column=5).value
@@ -457,12 +705,24 @@ def write_england_totals(
 
     # Edge case: Missing Submitter_Type
     >>> bad_df = pd.DataFrame({'Total Responses': [1000]})
-    >>> write_england_totals(wb, 'inpatient', bad_df, counts)
+    >>> params_bad: WriteEnglandTotalsParams = {
+    ...     'workbook': wb,
+    ...     'service_type': 'inpatient',
+    ...     'national_df': bad_df,
+    ...     'org_counts': counts,
+    ...     'data_options': None
+    ... }
+    >>> write_england_totals(params_bad)
     Traceback (most recent call last):
         ...
     KeyError: "'Submitter_Type' column not found in national_df"
 
     """
+    workbook = params["workbook"]
+    service_type = params["service_type"]
+    national_df = params["national_df"]
+    data_options = params["data_options"]
+
     # Extract data options with defaults
     data_options = data_options or {}
     all_level_data = data_options.get("all_level_data")
@@ -589,6 +849,7 @@ def _get_data_from_level(
 
     return total_row, nhs_row
 
+
 def _get_count_columns(level_df: pd.DataFrame, service_type: str = "inpatient") -> list:
     """Get list of count columns for aggregation."""
     return get_count_columns_for_service(service_type)
@@ -621,6 +882,82 @@ def _get_data_from_national(
         raise KeyError("national_df must contain 'Total' and 'NHS' rows")
 
     return total_row, nhs_row
+
+
+def _write_cell_preserving_font(sheet, row, col, value):
+    """Write a value to a cell while preserving the cell's font styling.
+
+    When assigning .value directly in openpyxl, font properties can be reset
+    to defaults. This helper preserves the existing font (family, size, bold,
+    italic, etc.) while updating the value.
+
+    Args:
+        sheet: Openpyxl worksheet
+        row: Row number (1-indexed)
+        col: Column number (1-indexed)
+        value: Value to write
+
+    Returns:
+        The cell object after writing
+
+    """
+    cell = sheet.cell(row=row, column=col)
+
+    # Save font properties before writing by creating a new Font with same properties
+    original_font = cell.font
+
+    # Write the value
+    cell.value = value
+
+    # Restore the font by creating a copy with all properties
+    cell.font = Font(
+        name=original_font.name,
+        size=original_font.size,
+        bold=original_font.bold,
+        italic=original_font.italic,
+        vertAlign=original_font.vertAlign,
+        underline=original_font.underline,
+        strike=original_font.strike,
+        color=original_font.color,
+    )
+
+    return cell
+
+
+def _safe_write_cell(sheet, row, col, value):
+    """Write to cell, handling merged cells by writing to top-left cell.
+
+    Preserves font styling while writing values.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        row: Row number (1-indexed)
+        col: Column number (1-indexed)
+        value: Value to write
+
+    Returns:
+        None (modifies sheet in place)
+
+    """
+    cell = sheet.cell(row=row, column=col)
+
+    if isinstance(cell, MergedCell):
+        for merged_range in sheet.merged_cells.ranges:
+            if (
+                merged_range.min_row <= row <= merged_range.max_row
+                and merged_range.min_col <= col <= merged_range.max_col
+            ):
+                # For merged cells, write to top-left and preserve its font
+                top_left_cell = sheet.cell(
+                    row=merged_range.min_row, column=merged_range.min_col
+                )
+                original_font = top_left_cell.font
+                top_left_cell.value = value
+                top_left_cell.font = original_font
+                return
+
+    # Non-merged cell: use preservation helper
+    _write_cell_preserving_font(sheet, row, col, value)
 
 
 def _get_sheet_configuration(
@@ -767,6 +1104,67 @@ def get_cached_formula_results(sheet, row: int = None) -> dict:
     return sheet._fft_cached_formulas.get(row, {})
 
 
+def _collect_formula_cells(sheet) -> dict:
+    """Collect formula cells grouped by row.
+
+    Args:
+        sheet: Openpyxl worksheet object
+
+    Returns:
+        Dict mapping row numbers to lists of formula cells
+
+    """
+    formula_cells_by_row = {}
+    for row in sheet.iter_rows():
+        for cell in row:
+            if cell.data_type == "f" and isinstance(cell.value, str):
+                row_num = cell.row
+                if row_num not in formula_cells_by_row:
+                    formula_cells_by_row[row_num] = []
+                formula_cells_by_row[row_num].append(cell)
+    return formula_cells_by_row
+
+
+def _process_row_formulas(sheet, row_num: int, cells: list):
+    """Process formulas for a single row, caching results.
+
+    Args:
+        sheet: Openpyxl worksheet object
+        row_num: Row number to process
+        cells: List of formula cells in this row
+
+    """
+    row_cache = {}
+
+    # First pass: Calculate SUBTOTAL formulas (no dependencies)
+    for cell in cells:
+        if "SUBTOTAL(" in cell.value:
+            try:
+                result = _calculate_formula_result(sheet, cell)
+                if result is not None:
+                    row_cache[cell.coordinate] = result
+            except (IndexError, ValueError, AttributeError, ZeroDivisionError):
+                pass
+
+    # Update sheet cache after first pass so IFERROR formulas can use results
+    if row_cache:
+        sheet._fft_cached_formulas[row_num] = row_cache
+
+    # Second pass: Calculate IFERROR formulas (may depend on SUBTOTAL results)
+    for cell in cells:
+        if "IFERROR(" in cell.value and cell.coordinate not in row_cache:
+            try:
+                result = _calculate_formula_result(sheet, cell)
+                if result is not None:
+                    row_cache[cell.coordinate] = result
+            except (IndexError, ValueError, AttributeError, ZeroDivisionError):
+                pass
+
+    # Update final cache
+    if row_cache:
+        sheet._fft_cached_formulas[row_num] = row_cache
+
+
 def _cache_all_formula_results(workbook: Workbook) -> None:
     """Cache all formula results in the workbook for validation.
 
@@ -783,49 +1181,11 @@ def _cache_all_formula_results(workbook: Workbook) -> None:
     """
     for sheet in workbook.worksheets:
         sheet._fft_cached_formulas = {}
+        formula_cells_by_row = _collect_formula_cells(sheet)
 
-        # Collect all formula cells, grouped by type and row
-        formula_cells_by_row = {}
-        for row in sheet.iter_rows():
-            for cell in row:
-                if cell.data_type == "f" and isinstance(cell.value, str):
-                    row_num = cell.row
-                    if row_num not in formula_cells_by_row:
-                        formula_cells_by_row[row_num] = []
-                    formula_cells_by_row[row_num].append(cell)
-
-        # Process each row
         for row_num in sorted(formula_cells_by_row.keys()):
             cells = formula_cells_by_row[row_num]
-            row_cache = {}
-
-            # First pass: Calculate SUBTOTAL formulas (no dependencies)
-            for cell in cells:
-                if "SUBTOTAL(" in cell.value:
-                    try:
-                        result = _calculate_formula_result(sheet, cell)
-                        if result is not None:
-                            row_cache[cell.coordinate] = result
-                    except (IndexError, ValueError, AttributeError, ZeroDivisionError):
-                        pass
-
-            # Update sheet cache after first pass so IFERROR formulas can use results
-            if row_cache:
-                sheet._fft_cached_formulas[row_num] = row_cache
-
-            # Second pass: Calculate IFERROR formulas (may depend on SUBTOTAL results)
-            for cell in cells:
-                if "IFERROR(" in cell.value and cell.coordinate not in row_cache:
-                    try:
-                        result = _calculate_formula_result(sheet, cell)
-                        if result is not None:
-                            row_cache[cell.coordinate] = result
-                    except (IndexError, ValueError, AttributeError, ZeroDivisionError):
-                        pass
-
-            # Update final cache
-            if row_cache:
-                sheet._fft_cached_formulas[row_num] = row_cache
+            _process_row_formulas(sheet, row_num, cells)
 
 
 def _calculate_formula_result(sheet, cell):
@@ -864,7 +1224,7 @@ def _calculate_subtotal_formula(sheet, formula: str):
     total = 0
     for row in range(start_row, end_row + 1):
         data_cell = sheet.cell(row=row, column=col_idx)
-        if data_cell.value and isinstance(data_cell.value, (int, float)):
+        if data_cell.value and isinstance(data_cell.value, numbers.Number):
             if not sheet.row_dimensions[row].hidden:
                 total += data_cell.value
 
@@ -946,7 +1306,7 @@ def _evaluate_expression(sheet, expression: str):
         total = 0
         for part in parts:
             value = _get_cell_value(sheet, part)
-            if isinstance(value, (int, float)):
+            if isinstance(value, numbers.Number):
                 total += value
         return total
 
@@ -967,7 +1327,7 @@ def _get_cell_value(sheet, cell_ref: str):
 
     # Otherwise return the raw value
     value = cell.value
-    return value if isinstance(value, (int, float)) else 0
+    return value if isinstance(value, numbers.Number) else 0
 
 
 def _evaluate_sum_range(sheet, range_expr: str):
@@ -985,7 +1345,7 @@ def _evaluate_sum_range(sheet, range_expr: str):
         for col in range(start_cell.column, end_cell.column + 1):
             cell = sheet.cell(row=row, column=col)
             value = _get_cell_value(sheet, cell.coordinate)
-            if isinstance(value, (int, float)):
+            if isinstance(value, numbers.Number):
                 total += value
 
     return total
@@ -1211,13 +1571,39 @@ def write_summary_sheet(
     # Get provider types from the summary data
     provider_types = list(summary_data["orgs_submitting"].keys())
 
+    # Helper function to safely write to potentially merged cells
+    def safe_write_cell(sheet, row, col, value):
+        """Write to cell, handling merged cells by writing to top-left cell."""
+        cell = sheet.cell(row=row, column=col)
+
+        # Check if this is a merged cell
+        if isinstance(cell, MergedCell):
+            # Find the merged range containing this cell
+            for merged_range in sheet.merged_cells.ranges:
+                if (
+                    merged_range.min_row <= row <= merged_range.max_row
+                    and merged_range.min_col <= col <= merged_range.max_col
+                ):
+                    # Write to the top-left cell of the merged range
+                    top_left_cell = sheet.cell(
+                        row=merged_range.min_row, column=merged_range.min_col
+                    )
+                    top_left_cell.value = value
+                    return
+
+        # Regular cell - write directly
+        cell.value = value
+
     # Write period headers
     period_row = config["period_row"]
-    for col_idx in range(3, 11):  # Columns C to J
-        if col_idx in [3, 4, 5, 7, 9]:  # Current period columns
-            sheet.cell(row=period_row, column=col_idx).value = current_period
-        elif col_idx in [6, 8, 10]:  # Previous period columns
-            sheet.cell(row=period_row, column=col_idx).value = previous_period
+    for data_key, col in config["cols"].items():
+        if data_key.endswith("_current") or data_key in [
+            "orgs_submitting",
+            "responses_to_date",
+        ]:
+            safe_write_cell(sheet, period_row, col, current_period)
+        elif data_key.endswith("_previous"):
+            safe_write_cell(sheet, period_row, col, previous_period)
 
     # Write data for each provider type
     for provider_key in provider_types:
@@ -1228,7 +1614,7 @@ def write_summary_sheet(
         for data_key, col in config["cols"].items():
             if data_key in summary_data and provider_key in summary_data[data_key]:
                 value = summary_data[data_key][provider_key]
-                sheet.cell(row=row, column=col).value = value
+                safe_write_cell(sheet, row, col, value)
 
 
 # %%
