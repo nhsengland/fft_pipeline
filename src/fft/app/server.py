@@ -675,13 +675,7 @@ def validate_service_implementation(service_type: str) -> tuple[bool, list[str]]
     if service_type in fft_config.TEMPLATE_CONFIG:
         template_file = fft_config.TEMPLATE_CONFIG[service_type]["template_file"]
         # Go up from /src/fft/app/server.py to project root
-        template_path = (
-            Path(__file__).parent.parent.parent.parent
-            / "data"
-            / "inputs"
-            / "templates"
-            / template_file
-        )
+        template_path = fft_config.TEMPLATES_DIR / template_file
         if not template_path.exists():
             missing.append(f"Template file: {template_file}")
 
