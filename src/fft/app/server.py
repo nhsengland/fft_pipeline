@@ -1189,10 +1189,16 @@ def get(service: str = ""):  # noqa: F811 # FastHTML route pattern
 @rt("/set-data-dir")
 def post():
     import tkinter as tk
+    import tkinter.font as tkfont
     from tkinter import filedialog
 
     root = tk.Tk()
     root.withdraw()
+
+    # Resize all built-in named fonts
+    for name in tkfont.names(root):
+        f = tkfont.nametofont(name)
+        f.configure(size=14)
     root.wm_attributes("-topmost", True)
     chosen = filedialog.askdirectory(
         title="Select your fft_pipeline data folder",
