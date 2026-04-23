@@ -31,16 +31,7 @@ from fasthtml.common import (
     serve,
 )
 
-from fft.config import (
-    COLUMN_MAPS,
-    FILE_PATTERNS,
-    MONTH_ABBREV,
-    OUTPUT_COLUMNS,
-    OUTPUTS_DIR,
-    RAW_DIR,
-    SERVICE_TYPES,
-    TEMPLATE_CONFIG,
-)
+import fft.config as fft_config
 
 # Constants for UI
 MAX_FILES_DISPLAYED = 12  # Maximum files to show in file list before truncating
@@ -634,16 +625,18 @@ def get_raw_files(service_type: str | None = None) -> list[Path]:
         List of Path objects for matching raw data files.
 
     """
-    if not RAW_DIR.exists():
+    if not fft_config.RAW_DIR.exists():
         return []
-    pattern = FILE_PATTERNS.get(service_type, "*.xlsx") if service_type else "*.xlsx"
-    return sorted(RAW_DIR.glob(pattern), reverse=True)
+    pattern = (
+        fft_config.FILE_PATTERNS.get(service_type, "*.xlsx") if service_type else "*.xlsx"
+    )
+    return sorted(fft_config.RAW_DIR.glob(pattern), reverse=True)
 
 
 def get_months(service_type: str) -> list[str]:
     """Extract month patterns (e.g., 'Aug-25') from filenames."""
     # Create pattern to match month-year format (e.g., Aug-25, Sep-24)
-    month_abbrevs = "|".join(MONTH_ABBREV.values())  # Jan|Feb|Mar|etc.
+    month_abbrevs = "|".join(fft_config.MONTH_ABBREV.values())  # Jan|Feb|Mar|etc.
     pattern = rf"\b({month_abbrevs})-(\d{{2}})\b"
 
     months = set()
@@ -669,18 +662,18 @@ def validate_service_implementation(service_type: str) -> tuple[bool, list[str]]
     missing = []
 
     # Check required configuration components (configs use service_type as key)
-    if service_type not in COLUMN_MAPS:
+    if service_type not in fft_config.COLUMN_MAPS:
         missing.append("COLUMN_MAPS configuration")
 
-    if service_type not in OUTPUT_COLUMNS:
+    if service_type not in fft_config.OUTPUT_COLUMNS:
         missing.append("OUTPUT_COLUMNS configuration")
 
-    if service_type not in TEMPLATE_CONFIG:
+    if service_type not in fft_config.TEMPLATE_CONFIG:
         missing.append("TEMPLATE_CONFIG configuration")
 
     # Check template file exists
-    if service_type in TEMPLATE_CONFIG:
-        template_file = TEMPLATE_CONFIG[service_type]["template_file"]
+    if service_type in fft_config.TEMPLATE_CONFIG:
+        template_file = fft_config.TEMPLATE_CONFIG[service_type]["template_file"]
         # Go up from /src/fft/app/server.py to project root
         template_path = (
             Path(__file__).parent.parent.parent.parent
@@ -731,7 +724,7 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
                 {"running": False, "success": False, "logs": [error_msg]}
             )
             return False, error_msg
-        flag = [k for k, v in SERVICE_TYPES.items() if v == service][0]
+        flag = [k for k, v in fft_config.SERVICE_TYPES.items() if v == service][0]
         cmd = [VENV_PYTHON, "-m", "fft", f"--{flag}"]
 
         if month and month != "all":
@@ -892,7 +885,7 @@ def service_select():
     ]
 
     # Add services with status indicators
-    for _, service_name in SERVICE_TYPES.items():
+    for _, service_name in fft_config.SERVICE_TYPES.items():
         is_complete, _ = validate_service_implementation(service_name)
         status_icon = "✓" if is_complete else "⚠"
         display_name = f"{status_icon} {service_name.title()}"
@@ -1025,6 +1018,22 @@ def get():
             hx_get="/progress",
             hx_trigger="load, every 2s",
             hx_swap="innerHTML",
+        ),
+        Div(
+            Label("📁 Data folder"),
+            P(
+                str(fft_config.DATA_DIR),
+                style="color:var(--text-muted); font-size:1rem; margin:0.25rem 0 0.75rem",
+            ),
+            Button(
+                "Open data folder",
+                type="button",
+                cls="btn-secondary",
+                hx_post="/set-data-dir",
+                hx_swap="none",
+            ),
+            style="margin-bottom:2rem; padding:1rem; background:var(--bg-alt); "
+            "border-radius:8px; border:1px solid var(--border)",
         ),
         Form(
             Div(
@@ -1177,6 +1186,32 @@ def get(service: str = ""):  # noqa: F811 # FastHTML route pattern
     return file_list_box(get_raw_files(service or None))
 
 
+@rt("/set-data-dir")
+def post():
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.wm_attributes("-topmost", True)
+    chosen = filedialog.askdirectory(
+        title="Select your fft_pipeline data folder",
+        initialdir=str(fft_config.DATA_DIR),
+    )
+    root.destroy()
+    if not chosen:
+        return P("No folder selected.", style="color:var(--text-muted)")
+    path = Path(chosen)
+    sf = fft_config._settings_file()
+    sf.parent.mkdir(parents=True, exist_ok=True)
+    sf.write_text(str(path))
+    fft_config.DATA_DIR = path
+    fft_config.INPUTS_DIR = path / "inputs"
+    fft_config.RAW_DIR = path / "inputs" / "raw"
+    fft_config.OUTPUTS_DIR = path / "outputs"
+    return P(f"✅ Data folder: {path}", style="color:var(--success)")
+
+
 @rt("/run")
 async def post(service: str, month: str):
     """Handle pipeline execution request."""
@@ -1235,8 +1270,8 @@ async def post(service: str, month: str):
 @rt("/open-output")
 def post():  # noqa: F811 # FastHTML route pattern
     """Open output directory in file browser."""
-    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    webbrowser.open(f"file://{OUTPUTS_DIR.absolute()}")
+    fft_config.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    webbrowser.open(f"file://{fft_config.OUTPUTS_DIR.absolute()}")
     return ""
 
 
