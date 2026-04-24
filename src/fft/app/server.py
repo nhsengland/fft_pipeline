@@ -724,7 +724,7 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         if month and month != "all":
             cmd.extend(["--month", month])
 
-        project_root = Path(__file__).parent.parent
+        project_root = Path(__file__).parent.parent.parent
         logger.info(f"Running: {' '.join(cmd)}")
 
         # Progress stages
@@ -737,8 +737,6 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         result = subprocess.run(
             cmd, check=False, capture_output=True, text=True, cwd=project_root
         )
-        logger.info(f"STDOUT: {result.stdout[:500]}")
-        logger.info(f"STDERR: {result.stderr[:500]}")
 
         update_progress(75, "Finishing", "Finalizing output...")
 
@@ -809,6 +807,7 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
                 "stage": "Error",
                 "message": f"Error: {str(e)}",
                 "success": False,
+                "logs": [f"Pipeline error: {type(e).__name__}: {str(e)}"],
             }
         )
         return False, f"Error running pipeline: {str(e)}"
