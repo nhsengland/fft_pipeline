@@ -737,6 +737,8 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
         result = subprocess.run(
             cmd, check=False, capture_output=True, text=True, cwd=project_root
         )
+        logger.info(f"STDOUT: {result.stdout[:500]}")
+        logger.info(f"STDERR: {result.stderr[:500]}")
 
         update_progress(75, "Finishing", "Finalizing output...")
 
