@@ -39,7 +39,7 @@ MAX_FILES_DISPLAYED = 12  # Maximum files to show in file list before truncating
 # Build path to the venv's own Python (not the base interpreter)
 _bin = "Scripts" if sys.platform == "win32" else "bin"
 _pyname = "python.exe" if sys.platform == "win32" else "python"
-VENV_PYTHON = str(Path(sys.prefix) / _bin / _pyname)
+VENV_PYTHON = sys.executable
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
