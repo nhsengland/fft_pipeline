@@ -726,6 +726,7 @@ def run_cmd(service: str, month: str) -> tuple[bool, str]:
 
         project_root = Path(__file__).parent.parent.parent
         logger.info(f"project_root = {project_root}, exists = {project_root.exists()}")
+        logger.info(f"VENV_PYTHON = {VENV_PYTHON}, exists = {Path(VENV_PYTHON).exists()}")
         logger.info(f"Running: {' '.join(cmd)}")
 
         # Progress stages
