@@ -1,10 +1,33 @@
 """Configuration for FFT pipeline paths, mappings, and constants."""
 
+import os
+import sys
 from pathlib import Path
 from typing import TypedDict
 
-BASE_DIR = Path(__file__).parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
+
+def _default_data_dir() -> Path:
+    if sys.platform in ("win32", "darwin"):
+        return Path.home() / "Documents" / "fft_pipeline" / "data"
+    return Path.home() / "fft_pipeline" / "data"  # Linux
+
+
+def _settings_file() -> Path:
+    return _default_data_dir().parent / "datadir.txt"
+
+
+def _load_data_dir() -> Path:
+    if "FFT_DATA_DIR" in os.environ:
+        return Path(os.environ["FFT_DATA_DIR"])
+    sf = _settings_file()
+    if sf.exists():
+        saved = sf.read_text().strip()
+        if saved:
+            return Path(saved)
+    return _default_data_dir()
+
+
+DATA_DIR = _load_data_dir()
 INPUTS_DIR = DATA_DIR / "inputs"
 RAW_DIR = INPUTS_DIR / "raw"
 SUPPRESSION_FILES_DIR = INPUTS_DIR / "suppression_files"
